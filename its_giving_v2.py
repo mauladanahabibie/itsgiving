@@ -157,7 +157,7 @@ class Clock:
 
 
 class WindowController:
-    """Track window minimize and visibility state, auto-hiding window when minimized to bypass Windows OS 10 FPS camera throttling."""
+    """Track window visibility and user events without leaks, ghost windows, or CPU stalls."""
 
     def __init__(self, window_name, initial_hide=False):
         self.name = window_name
@@ -165,37 +165,66 @@ class WindowController:
         self.hidden = initial_hide
         self.created = False
 
+    def ensure_window(self):
+        """Create window only when explicitly needed to be shown."""
+        if not self.created:
+            cv2.namedWindow(self.name, cv2.WINDOW_NORMAL)
+            self.created = True
+            self.hwnd = None
+
     def update(self):
+        """Detect if user closed the window via 'X' button, or minimized it."""
+        if self.created and not self.hidden:
+            # Detect user clicking 'X' (close) on OpenCV window
+            try:
+                vis = cv2.getWindowProperty(self.name, cv2.WND_PROP_VISIBLE)
+                if vis < 1:
+                    # User clicked 'X' to close preview!
+                    self.hidden = True
+                    self.created = False
+                    self.hwnd = None
+                    try:
+                        cv2.destroyWindow(self.name)
+                    except Exception:
+                        pass
+                    print("\n[Preview Window] Closed by user. Background mode active. Press 'h' or Ctrl+Alt+H to reopen.")
+                    return
+            except Exception:
+                pass
+
+            if sys.platform == "win32":
+                try:
+                    import ctypes
+                    if not self.hwnd:
+                        self.hwnd = ctypes.windll.user32.FindWindowW(None, self.name)
+                    if self.hwnd and ctypes.windll.user32.IsIconic(self.hwnd):
+                        self.hide()
+                        print("\n[Notice] Preview window hidden to maintain full 30 FPS virtual camera stream. Press 'h' or Ctrl+Alt+H to restore.")
+                except Exception:
+                    pass
+
+    def show(self):
+        self.ensure_window()
+        self.hidden = False
         if sys.platform == "win32":
             try:
                 import ctypes
                 if not self.hwnd:
                     self.hwnd = ctypes.windll.user32.FindWindowW(None, self.name)
-                if self.hwnd and not self.hidden:
-                    if ctypes.windll.user32.IsIconic(self.hwnd):
-                        ctypes.windll.user32.ShowWindow(self.hwnd, 0)  # SW_HIDE
-                        self.hidden = True
-                        print("\n[Notice] Preview window hidden to maintain full 30 FPS virtual camera stream. Press 'h' to restore.")
-            except Exception:
-                pass
-
-    def show(self):
-        self.hidden = False
-        if sys.platform == "win32" and self.hwnd:
-            try:
-                import ctypes
-                ctypes.windll.user32.ShowWindow(self.hwnd, 9)  # SW_RESTORE
+                if self.hwnd:
+                    ctypes.windll.user32.ShowWindow(self.hwnd, 9)  # SW_RESTORE
             except Exception:
                 pass
 
     def hide(self):
         self.hidden = True
-        if sys.platform == "win32" and self.hwnd:
+        if self.created:
             try:
-                import ctypes
-                ctypes.windll.user32.ShowWindow(self.hwnd, 0)  # SW_HIDE
+                cv2.destroyWindow(self.name)
             except Exception:
                 pass
+            self.created = False
+            self.hwnd = None
 
     def toggle(self):
         if self.hidden:
@@ -214,11 +243,12 @@ class HotkeyManager:
         self.prev_f = False
         self.prev_t = False
 
-    def poll(self):
-        # 1. OpenCV window key (if window is active/focused)
-        k = cv2.pollKey() & 0xFF if hasattr(cv2, "pollKey") else cv2.waitKey(1) & 0xFF
-        if k != 255 and k != 0:
-            return chr(k).lower()
+    def poll(self, has_window=True):
+        # 1. OpenCV window key (only if window is actually created & visible)
+        if has_window:
+            k = cv2.pollKey() & 0xFF if hasattr(cv2, "pollKey") else cv2.waitKey(1) & 0xFF
+            if k != 255 and k != 0:
+                return chr(k).lower()
 
         # 2. Terminal console key (when terminal is focused, e.g. in --hide mode)
         if sys.platform == "win32":
@@ -830,6 +860,8 @@ def main():
             w, h = args.size.lower().split("x")
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(w))
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(h))
+        # Set buffer size to 1 to prevent DirectShow frame backlog & latency buildup over time
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         # Request highest supported FPS (60) by default, or user's specific choice if given
         cap.set(cv2.CAP_PROP_FPS, args.fps if args.fps is not None else 60)
     ok, frame = False, None
@@ -848,9 +880,10 @@ def main():
     print(f"Camera {args.camera}: {W}x{H} @ {cam_fps} FPS")
 
     clock = Clock()
-    window = "it's giving v2  (q quit, d HUD, m mode, b bg, f mirror, h hide/show, c recalibrate, 1-9 0 - = [ p s test)"
-    cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+    window = "it's giving v2  (q quit, d HUD, m mode, b bg, f mirror, t discord, h hide/show, c recalibrate, 1-9 0 - = [ p s test)"
     win_ctrl = WindowController(window, initial_hide=args.hide)
+    if not args.hide:
+        win_ctrl.ensure_window()
     hotkey_mgr = HotkeyManager()
     bg_engine = BackgroundEngine(model_paths["selfie_segmenter.tflite"], custom_bg_path=args.bg_image, initial_mode=args.bg)
 
@@ -986,16 +1019,15 @@ def main():
             out_frame = cv2.flip(frame, 1) if discord_mode else frame
             if vcam:
                 vcam.send(out_frame)
-                vcam.sleep_until_next_frame()
 
             if not win_ctrl.hidden:
-                win_ctrl.created = True
+                win_ctrl.ensure_window()
                 preview = frame
                 if show_hud:
                     preview = frame.copy()
                     draw_hud(preview, mode, hand_gesture, shown, raw, dbg, face, hands, body, base, bg_engine.mode, mirrored=mirrored, discord_mode=discord_mode)
                 cv2.imshow(window, preview)
-            ch = hotkey_mgr.poll()
+            ch = hotkey_mgr.poll(has_window=(not win_ctrl.hidden))
             if ch == "q":
                 break
             if ch == "d":
