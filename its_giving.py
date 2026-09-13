@@ -24,6 +24,7 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision
 from hand_fx import HandFXRenderer
+from background import BackgroundEngine, BG_MODES
 
 POSES = ["time_out", "heart", "cover_nose", "crashing_out", "dance", "nose_closed", "flirty",
          "tongue_out", "open_mouth", "disgusted", "talking_to_wall", "suspicious", "spin", "pray", "speed"]
@@ -53,6 +54,8 @@ MODELS = {
     "face_landmarker.task": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
     "hand_landmarker.task": "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
     "pose_landmarker_lite.task": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+    "selfie_segmenter.tflite": "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
+    "selfie_segmenter_landscape.tflite": "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite",
 }
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -165,6 +168,9 @@ class HotkeyManager:
     def __init__(self):
         self.prev_m = False
         self.prev_h = False
+        self.prev_b = False
+        self.prev_f = False
+        self.prev_t = False
 
     def poll(self):
         # 1. OpenCV window key (if window is active/focused)
@@ -185,7 +191,8 @@ class HotkeyManager:
             except Exception:
                 pass
 
-        # 3. Global hotkeys on Windows (Ctrl+Alt+M for mode, Ctrl+Alt+H for hide/show)
+        # 3. Global hotkeys on Windows:
+        # Ctrl+Alt+M (mode switch), Ctrl+Alt+H (hide/show), Ctrl+Alt+B (background switch), Ctrl+Alt+F (mirror flip), Ctrl+Alt+T (discord mode)
         if sys.platform == "win32":
             try:
                 import ctypes
@@ -206,9 +213,33 @@ class HotkeyManager:
                         return "h"
                     elif not h_down:
                         self.prev_h = False
+
+                    b_down = bool(u32.GetAsyncKeyState(ord("B")) & 0x8000)
+                    if b_down and not self.prev_b:
+                        self.prev_b = True
+                        return "b"
+                    elif not b_down:
+                        self.prev_b = False
+
+                    f_down = bool(u32.GetAsyncKeyState(ord("F")) & 0x8000)
+                    if f_down and not self.prev_f:
+                        self.prev_f = True
+                        return "f"
+                    elif not f_down:
+                        self.prev_f = False
+
+                    t_down = bool(u32.GetAsyncKeyState(ord("T")) & 0x8000)
+                    if t_down and not self.prev_t:
+                        self.prev_t = True
+                        return "t"
+                    elif not t_down:
+                        self.prev_t = False
                 else:
                     self.prev_m = False
                     self.prev_h = False
+                    self.prev_b = False
+                    self.prev_f = False
+                    self.prev_t = False
             except Exception:
                 pass
 
@@ -323,7 +354,10 @@ class Face:
         self.mouth = (p[13] + p[14]) / 2
         self.eye_y = float((p[33][1] + p[263][1]) / 2)
         cl, cr = p[234], p[454]
-        self.turn = abs((self.nose[0] - cl[0]) / max(cr[0] - cl[0], 1e-3) - 0.5)
+        min_x = min(cl[0], cr[0])
+        max_x = max(cl[0], cr[0])
+        width = max(max_x - min_x, 1e-3)
+        self.turn = abs((self.nose[0] - min_x) / width - 0.5)
         self.bs = {c.category_name: c.score for c in (blendshapes or [])}
 
     def b(self, name):
@@ -510,7 +544,7 @@ def decide(face, hands, body, tongue, gesture):
     return None, d
 
 
-def draw_hud(img, mode, hand_gesture, shown, raw, d, face, hands, body):
+def draw_hud(img, mode, hand_gesture, shown, raw, d, face, hands, body, bg_mode="original", mirrored=True, discord_mode=False):
     if face:
         x0, y0, x1, y1 = face.box
         cv2.rectangle(img, (x0, y0), (x1, y1), (0, 255, 0), 1)
@@ -522,19 +556,21 @@ def draw_hud(img, mode, hand_gesture, shown, raw, d, face, hands, body):
     if mode == "hand":
         lines = [
             ("MODE: [HAND FX]  (press 'm' to switch to MEME)", (0, 255, 255)),
+            (f"Background: [{bg_mode.upper()}]   Mirror: [{'ON' if mirrored else 'OFF'}]   Discord Mode: [{'ON' if discord_mode else 'OFF'}]", (0, 255, 255)),
             (f"Hands: {len(hands)}   Active FX: {hand_gesture or 'None'}", (0, 255, 0)),
             ("Gestures: 🤟 Spiderman  👐 Kamehameha  🙌 Genkidama  ⚖️ 6 7 Motion", (200, 200, 255)),
             ("          ✊ Claws      ✋ Repulsor    🤘 Rock On    👉 Gun", (200, 200, 255)),
             ("          ☝️ Eldritch   ✌️ Peace       👍 +1000 Aura 🤙 Shaka 6", (200, 200, 255)),
-            ("keys: q quit  d hud  h hide/show  m mode", (0, 255, 0)),
+            ("keys: q quit  d hud  h hide/show  m mode  b bg  f mirror  t discord", (0, 255, 0)),
         ]
     else:
         lines = [
             ("MODE: [MEME REACTIONS]  (press 'm' to switch to HAND FX)", (0, 255, 255)),
+            (f"Background: [{bg_mode.upper()}]   Mirror: [{'ON' if mirrored else 'OFF'}]   Discord Mode: [{'ON' if discord_mode else 'OFF'}]", (0, 255, 255)),
             (f"showing: {shown or '-'}   raw: {raw or '-'}   hands: {d.get('hands', 0)}   elbows up: {'Y' if d.get('elbows_up') else 'n'}", (0, 255, 0)),
             (f"jaw {d.get('jaw', 0):.2f}  tongue {d.get('tongue', 0):.2f}  pucker {d.get('pucker', 0):.2f}  turn {d.get('turn', 0):.2f}  squint {d.get('squint', 0):.2f}  gesture {d.get('gesture', 0):.3f}", (0, 255, 0)),
             (f"disgust {d.get('disgust', 0):.2f} = 2x sneer {d.get('sneer', 0):.2f} + brow {d.get('brow', 0):.2f} + frown {d.get('frown', 0):.2f} + lip {d.get('lip', 0):.2f}", (0, 255, 0)),
-            ("keys: q quit  d hud  h hide/show  m mode  1-9 0 - = [ p s test", (0, 255, 0)),
+            ("keys: q quit  d hud  h hide/show  m mode  b bg  f mirror  t discord  1-9 0 - = [ p s test", (0, 255, 0)),
         ]
     for i, t in enumerate(lines):
         y = 24 + 22 * i
@@ -548,10 +584,21 @@ def main():
     ap.add_argument("--no-vcam", action="store_true", help="preview only; don't start the virtual camera")
     ap.add_argument("--skip-check", action="store_true", help="skip the MediaPipe startup check")
     ap.add_argument("--size", default="1280x720", help="capture size, e.g. 1280x720 or 640x480 (lower = faster)")
-    ap.add_argument("--no-flip", action="store_true", help="don't mirror the image")
+    ap.add_argument("--mirror", choices=["on", "off"], default="on",
+                    help="webcam mirror mode: 'on' (default, mirrors camera feed so coordinates and effects align naturally) or 'off'")
+    ap.add_argument("--no-flip", action="store_true", help="alias for --mirror off (don't mirror the camera feed)")
     ap.add_argument("--hide", action="store_true", help="start with preview window hidden for background operation")
+    ap.add_argument("--fps", type=int, default=None, help="target capture and virtual camera FPS (e.g. 30 or 60). If omitted, automatically uses the highest FPS supported by your webcam.")
     ap.add_argument("--mode", choices=["meme", "hand"], default="meme", help="starting mode: 'meme' for meme reactions, 'hand' for superhero hand FX")
+    ap.add_argument("--bg", choices=["original", "remove", "blur", "custom", "transparent", "green"], default="original",
+                    help="starting background mode: 'original', 'remove', 'blur', 'custom'")
+    ap.add_argument("--bg-image", default="assets/background.jpeg", help="path to custom background image")
+    ap.add_argument("--discord", action="store_true",
+                    help="Discord Self-View mode: pre-flips the virtual camera output so Discord's mirrored self-view displays all text and effects naturally")
     args = ap.parse_args()
+
+    mirrored = (args.mirror == "on") and (not args.no_flip)
+    discord_mode = args.discord
 
     model_paths = ensure_models()
     if not args.skip_check:
@@ -559,11 +606,18 @@ def main():
     print("Assets:")
     assets = {pose: load_asset(pose) for pose in POSES}
 
-    cap = cv2.VideoCapture(args.camera)
-    if cap.isOpened() and "x" in args.size:
-        w, h = args.size.lower().split("x")
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(w))
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(h))
+    backend = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
+    cap = cv2.VideoCapture(args.camera, backend)
+    if not cap.isOpened():
+        cap = cv2.VideoCapture(args.camera)
+
+    if cap.isOpened():
+        if "x" in args.size:
+            w, h = args.size.lower().split("x")
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(w))
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(h))
+        # Request highest supported FPS (60) by default, or user's specific choice if given
+        cap.set(cv2.CAP_PROP_FPS, args.fps if args.fps is not None else 60)
     ok, frame = False, None
     if cap.isOpened():
         for _ in range(5):
@@ -575,15 +629,27 @@ def main():
                  "  - try --camera 1\n"
                  "  - System Settings > Privacy & Security > Camera: allow your terminal app, then re-run")
     H, W = frame.shape[:2]
-    print(f"Camera {args.camera}: {W}x{H}")
+    raw_fps = cap.get(cv2.CAP_PROP_FPS)
+    cam_fps = int(round(raw_fps)) if raw_fps > 0 else (args.fps if args.fps else 30)
+    print(f"Camera {args.camera}: {W}x{H} @ {cam_fps} FPS")
 
-    window = "Reaction Cam  (q quit, d HUD, m mode, h hide/show, 1-9 0 - = [ p s test)"
+    window = "Reaction Cam  (q quit, d HUD, m mode, b bg, f mirror, h hide/show, 1-9 0 - = [ p s test)"
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
     win_ctrl = WindowController(window, initial_hide=args.hide)
     hotkey_mgr = HotkeyManager()
+    bg_engine = BackgroundEngine(model_paths["selfie_segmenter.tflite"], custom_bg_path=args.bg_image, initial_mode=args.bg)
+
+    print(f"\n[Mirror Setting: {'ON' if mirrored else 'OFF'}] (Press 'f' or Ctrl+Alt+F to toggle)")
+    print(f"[Discord Mode: {'ON' if discord_mode else 'OFF'}] (Press 't' or Ctrl+Alt+T to toggle)")
+    print("  * Virtual camera outputs ready-to-use frame with natural spatial arrangement & readable text.")
+    print("  * Discord users: enable Discord Mode ('t' or --discord) so your local self-view preview is 100% upright & readable!\n")
+
     if args.hide:
-        print("\n[Background Mode Active (--hide)]")
+        print("[Background Mode Active (--hide)]")
         print("  - Press 'm' in terminal or Ctrl+Alt+M anywhere to switch mode (MEME / HAND FX)")
+        print("  - Press 'b' in terminal or Ctrl+Alt+B anywhere to cycle background (ORIGINAL / REMOVE / BLUR / CUSTOM)")
+        print(f"  - Press 'f' in terminal or Ctrl+Alt+F anywhere to toggle webcam mirror (Current: {'ON' if mirrored else 'OFF'})")
+        print(f"  - Press 't' in terminal or Ctrl+Alt+T anywhere to toggle Discord Mode (Current: {'ON' if discord_mode else 'OFF'})")
         print("  - Press 'h' in terminal or Ctrl+Alt+H anywhere to show/hide preview window")
         print("  - Press 'q' in terminal to quit\n")
 
@@ -598,8 +664,8 @@ def main():
     if not args.no_vcam:
         try:
             import pyvirtualcam
-            vcam = pyvirtualcam.Camera(width=W, height=H, fps=30, fmt=pyvirtualcam.PixelFormat.BGR)
-            print(f"Virtual camera: '{vcam.device}'  <- pick this camera in Zoom / Meet")
+            vcam = pyvirtualcam.Camera(width=W, height=H, fps=cam_fps, fmt=pyvirtualcam.PixelFormat.BGR)
+            print(f"Virtual camera: '{vcam.device}' ({W}x{H} @ {cam_fps} FPS)  <- pick this camera in Zoom / Meet")
         except Exception as e:
             print(f"Virtual camera unavailable ({e}). Preview-only.")
 
@@ -614,7 +680,7 @@ def main():
     mode = args.mode
     hand_fx = HandFXRenderer()
     hand_gesture = None
-    print("Running. Focus the preview window: q quit, d HUD, m mode, 1-9 0 - = [ p s test a pose")
+    print("Running. Focus the preview window: q quit, d HUD, m mode, b bg, f mirror, 1-9 0 - = [ p s test a pose")
 
     try:
         while True:
@@ -624,7 +690,7 @@ def main():
                 break
             if frame.shape[0] != H or frame.shape[1] != W:
                 frame = cv2.resize(frame, (W, H))
-            if not args.no_flip:
+            if mirrored:
                 frame = cv2.flip(frame, 1)
 
             ts = int((time.monotonic() - t_start) * 1000)
@@ -637,6 +703,9 @@ def main():
                 if fr.face_landmarks else None
             hands = [Hand(h, W, H) for h in hr.hand_landmarks]
             body = Body(pr.pose_landmarks[0], W, H) if pr.pose_landmarks else None
+
+            # --- Pipeline: Background Processing (BEFORE Hand FX and Meme overlays) ---
+            frame = bg_engine.process(frame, mp_img, ts, face=face, hands=hands)
 
             raw, dbg = None, {}
 
@@ -680,8 +749,9 @@ def main():
 
             win_ctrl.update()
 
+            out_frame = cv2.flip(frame, 1) if discord_mode else frame
             if vcam:
-                vcam.send(frame)
+                vcam.send(out_frame)
                 vcam.sleep_until_next_frame()
 
             if not win_ctrl.hidden:
@@ -689,7 +759,7 @@ def main():
                 preview = frame
                 if show_hud:
                     preview = frame.copy()
-                    draw_hud(preview, mode, hand_gesture, shown, raw, dbg, face, hands, body)
+                    draw_hud(preview, mode, hand_gesture, shown, raw, dbg, face, hands, body, bg_engine.mode, mirrored=mirrored, discord_mode=discord_mode)
                 cv2.imshow(window, preview)
             ch = hotkey_mgr.poll()
             if ch == "q":
@@ -699,6 +769,18 @@ def main():
             elif ch == "m":
                 mode = "hand" if mode == "meme" else "meme"
                 print(f"\n[Mode Switched] Current Mode: {mode.upper()}")
+            elif ch == "b":
+                new_bg = bg_engine.cycle_mode()
+                print(f"\n[Background Switched] Current Mode: {new_bg.upper()}")
+            elif ch == "f":
+                mirrored = not mirrored
+                print(f"\n[Mirror Setting] {'ON (Mirrored)' if mirrored else 'OFF (Unmirrored)'}")
+                print("  Note: Zoom/Teams: keep 'Mirror my video' unchecked. Discord/Meet: viewers already see it correctly.")
+            elif ch == "t":
+                discord_mode = not discord_mode
+                print(f"\n[Discord Mode] {'ON (Pre-flipped for Discord Self-View preview)' if discord_mode else 'OFF (Standard / Zoom / OBS)'}")
+                if discord_mode:
+                    print("  * Virtual camera output is pre-flipped so Discord's mirrored self-view displays all text and effects upright & readable!")
             elif ch == "h":
                 win_ctrl.toggle()
                 print(f"\n[Preview Window] {'Hidden' if win_ctrl.hidden else 'Restored'}")
@@ -712,6 +794,7 @@ def main():
             except Exception:
                 pass
         cap.release()
+        bg_engine.close()
         face_det.close()
         hand_det.close()
         pose_det.close()

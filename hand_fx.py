@@ -179,59 +179,62 @@ class HandFXRenderer:
     def draw_six_seven(self, frame, h1, h2, fw):
         """Render viral 67 Hand Motion & Hand Sign (see-saw weighing options motion with glowing 6 & 7)."""
         H, W = frame.shape[:2]
-        if h1.palm[0] < h2.palm[0]:
-            left_h, right_h = h1, h2
-        else:
-            left_h, right_h = h2, h1
 
-        lx, ly = int(left_h.palm[0]), int(left_h.palm[1])
-        rx, ry = int(right_h.palm[0]), int(right_h.palm[1])
+        # In both Mirror ON and Mirror OFF, the visual reading order must always be '6' on the left and '7' on the right:
+        # Mirror OFF: [person] 67
+        # Mirror ON:  [person mirrored] 67 (never reversed-text)
+        left_h = min(h1, h2, key=lambda h: h.palm[0])
+        right_h = max(h1, h2, key=lambda h: h.palm[0])
+
+        p6_x, p6_y = int(left_h.palm[0]), int(left_h.palm[1])
+        p7_x, p7_y = int(right_h.palm[0]), int(right_h.palm[1])
 
         overlay = frame.copy()
 
         # Seesaw balance beam connecting both hands
-        cv2.line(overlay, (lx, ly), (rx, ry), (0, 200, 255), 4, cv2.LINE_AA)
-        cv2.line(overlay, (lx, ly), (rx, ry), (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.line(overlay, (p6_x, p6_y), (p7_x, p7_y), (0, 200, 255), 4, cv2.LINE_AA)
+        cv2.line(overlay, (p6_x, p6_y), (p7_x, p7_y), (255, 255, 255), 2, cv2.LINE_AA)
 
         # Fulcrum balance point
-        mid_x, mid_y = int((lx + rx) / 2), int((ly + ry) / 2)
+        mid_x, mid_y = int((p6_x + p7_x) / 2), int((p6_y + p7_y) / 2)
         cv2.circle(overlay, (mid_x, mid_y), 10, (0, 140, 255), -1, cv2.LINE_AA)
         cv2.circle(overlay, (mid_x, mid_y), 5, (255, 255, 255), -1, cv2.LINE_AA)
 
-        # Pulsing energy aura under each hand
+        # Pulsing energy aura under each hand (6 = cyan/blue, 7 = gold/orange)
         pulse_6 = 1.0 + 0.15 * math.sin(self.frame_count * 0.4)
         pulse_7 = 1.0 + 0.15 * math.cos(self.frame_count * 0.4)
-        draw_glow_circle(overlay, (lx, ly), int(fw * 0.4 * pulse_6), (0, 140, 255), -1)
-        draw_glow_circle(overlay, (rx, ry), int(fw * 0.4 * pulse_7), (255, 180, 0), -1)
+        draw_glow_circle(overlay, (p6_x, p6_y), int(fw * 0.4 * pulse_6), (0, 140, 255), -1)
+        draw_glow_circle(overlay, (p7_x, p7_y), int(fw * 0.4 * pulse_7), (255, 180, 0), -1)
 
         # Floating numbers 6 and 7 particles
         for i in range(4):
-            dx = math.sin(self.frame_count * 0.1 + i * 1.5) * fw * 0.3
+            dx_6 = math.sin(self.frame_count * 0.1 + i * 1.5) * fw * 0.3
+            dx_7 = math.sin(self.frame_count * 0.1 + (i + 2) * 1.5) * fw * 0.3
             dy_6 = (self.frame_count * 3 + i * 20) % int(fw * 0.8)
             dy_7 = (self.frame_count * 3 + (i + 2) * 20) % int(fw * 0.8)
-            p6_x, p6_y = int(lx + dx), int(ly - fw * 0.4 - dy_6)
-            p7_x, p7_y = int(rx + dx), int(ry - fw * 0.4 - dy_7)
-            if 0 <= p6_x < W and 0 <= p6_y < H:
-                cv2.putText(overlay, "6", (p6_x, p6_y), cv2.FONT_HERSHEY_DUPLEX, 0.6, (0, 220, 255), 2, cv2.LINE_AA)
-            if 0 <= p7_x < W and 0 <= p7_y < H:
-                cv2.putText(overlay, "7", (p7_x, p7_y), cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 240, 0), 2, cv2.LINE_AA)
+            f6_x, f6_y = int(p6_x + dx_6), int(p6_y - fw * 0.4 - dy_6)
+            f7_x, f7_y = int(p7_x + dx_7), int(p7_y - fw * 0.4 - dy_7)
+            if 0 <= f6_x < W and 0 <= f6_y < H:
+                cv2.putText(overlay, "6", (f6_x, f6_y), cv2.FONT_HERSHEY_DUPLEX, 0.6, (0, 220, 255), 2, cv2.LINE_AA)
+            if 0 <= f7_x < W and 0 <= f7_y < H:
+                cv2.putText(overlay, "7", (f7_x, f7_y), cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 240, 0), 2, cv2.LINE_AA)
 
         cv2.addWeighted(overlay, 0.70, frame, 0.30, 0, frame)
 
-        # Giant Holographic '6' above Left Hand
-        g6_x, g6_y = int(lx - 25), int(ly - fw * 0.45)
+        # Giant Holographic '6' above 6 Hand
+        g6_x, g6_y = int(p6_x - 25), int(p6_y - fw * 0.45)
         cv2.putText(frame, "6", (g6_x, g6_y), cv2.FONT_HERSHEY_TRIPLEX, 2.6, (0, 0, 0), 8, cv2.LINE_AA)
         cv2.putText(frame, "6", (g6_x, g6_y), cv2.FONT_HERSHEY_TRIPLEX, 2.6, (0, 140, 255), 4, cv2.LINE_AA)
         cv2.putText(frame, "6", (g6_x, g6_y), cv2.FONT_HERSHEY_TRIPLEX, 2.6, (255, 255, 255), 2, cv2.LINE_AA)
 
-        # Giant Holographic '7' above Right Hand
-        g7_x, g7_y = int(rx - 25), int(ry - fw * 0.45)
+        # Giant Holographic '7' above 7 Hand
+        g7_x, g7_y = int(p7_x - 25), int(p7_y - fw * 0.45)
         cv2.putText(frame, "7", (g7_x, g7_y), cv2.FONT_HERSHEY_TRIPLEX, 2.6, (0, 0, 0), 8, cv2.LINE_AA)
         cv2.putText(frame, "7", (g7_x, g7_y), cv2.FONT_HERSHEY_TRIPLEX, 2.6, (255, 180, 0), 4, cv2.LINE_AA)
         cv2.putText(frame, "7", (g7_x, g7_y), cv2.FONT_HERSHEY_TRIPLEX, 2.6, (255, 255, 255), 2, cv2.LINE_AA)
 
         # Central Comic Action Badge
-        badge_y = int(min(ly, ry) - fw * 0.85)
+        badge_y = int(min(p6_y, p7_y) - fw * 0.85)
         badge_y = max(badge_y, 40)
         draw_comic_badge(frame, "SIX SEVEN (6 7)!", (mid_x - 110, badge_y),
                          bg_color=(220, 30, 80), text_color=(255, 255, 0), scale=0.9)

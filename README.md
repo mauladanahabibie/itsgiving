@@ -54,28 +54,79 @@ nothing in the code cares. Unpin one and you have to unpin all three.
 
 ```bash
 python its_giving_v2.py --calibrate          # once, seven seconds
-python its_giving_v2.py                      # preview + virtual camera (Meme mode)
+python its_giving_v2.py                      # auto-selects highest FPS supported (e.g. 60 FPS)
+python its_giving_v2.py --fps 30             # force 30 FPS (if you want lower CPU usage)
 python its_giving_v2.py --mode hand          # start in Hand FX mode (Spiderman, etc.)
-python its_giving_v2.py --hide               # start hidden in background (full 30 FPS)
+python its_giving_v2.py --bg remove          # start with background removed (Chroma Green / Transparent)
+python its_giving_v2.py --bg blur            # start with blurred bokeh background
+python its_giving_v2.py --bg custom          # start with custom image background (assets/background.jpeg)
+python its_giving_v2.py --hide               # start hidden in background (high performance)
 python its_giving_v2.py --hide --mode hand   # start directly in Hand FX background mode
 ```
 
 | key / shortcut | does |
 |---|---|
 | `m` (or **`Ctrl + Alt + M`**) | **switch mode** between Meme Reaction (🎭) and Hand FX (🕸️) |
+| `b` (or **`Ctrl + Alt + B`**) | **cycle background**: `Original` ➔ `Remove` (Chroma/Transparent) ➔ `Blur` ➔ `Custom Image` |
+| `f` (or **`Ctrl + Alt + F`**) | **toggle mirror/flip**: Mirrored (ON) ➔ Normal (OFF) |
+| `t` (or **`Ctrl + Alt + T`**) | **toggle Discord Self-View Mode**: pre-flips vcam output so Discord's preview displays 100% upright text & natural mirror |
 | `h` (or **`Ctrl + Alt + H`**) | toggle hide / show preview window |
 | `q` | quit (in preview window or terminal) |
 | `d` | toggle the HUD |
 | `c` | recalibrate (v2) |
 | `1`–`9` `0` `-` `=` `[` `p` `s` | force a reaction on screen for 2 seconds (in Meme mode) |
 
+---
+
+### Real-Time Background Removal & Virtual Background
+
+The app features an ultra-lightweight MediaPipe Selfie Segmenter (~7ms) combined with native C++ blending (`cv2.blendLinear`) running at a rock-solid 30+ FPS.
+
+**Pipeline Architecture:**
+`Webcam` ➔ `Segmentation` ➔ `Background Processing` ➔ `Meme / Hand FX Overlays` ➔ `Virtual Camera (Zoom / Meet / OBS)`
+
+Because background processing runs **before** Meme Mode and Hand FX, all overlays (meme sprites, Spiderman webs, Wolverine claws, Kamehameha, etc.) render naturally on top of the person and the replaced background!
+
+* **Original:** Normal webcam feed (segmentation bypassed for 0% CPU overhead).
+* **Remove (Transparent / Chroma Green):** The background is replaced with pure Chroma Green `(0, 255, 0)`. In OBS Studio or broadcast software, simply add a 1-click **Chroma Key** filter to make the background 100% transparent over your games, presentation slides, or desktop!
+* **Blur:** Smooth two-pass bokeh blur for a DSLR portrait look in meetings.
+* **Custom Background:** Replaces your background with `assets/background.jpeg` (or any custom image via `--bg-image <path>`), automatically aspect-fitted and center-cropped.
+
 > **Controlling in Background Mode (`--hide`):**
 > When running with `--hide`, the preview window is not shown so normal OpenCV window clicks won't register. You have **3 easy ways** to switch mode or control the app:
-> 1. **Global Hotkeys (Anywhere):** Press **`Ctrl + Alt + M`** from anywhere (even while focused inside Zoom, Teams, Google Meet, or a game) to switch modes! Press **`Ctrl + Alt + H`** to unhide the window.
-> 2. **Terminal Console:** Click into the terminal window running Python and simply press **`m`** to switch mode, **`h`** to show the window, or **`q`** to quit.
-> 3. **Command Line Flag:** Start directly in your desired mode, e.g. `python its_giving_v2.py --hide --mode hand`.
+> 1. **Global Hotkeys (Anywhere):**
+>    - Press **`Ctrl + Alt + M`** anywhere to switch between Meme Mode and Hand FX!
+>    - Press **`Ctrl + Alt + B`** anywhere to cycle backgrounds (`Original` ➔ `Remove` ➔ `Blur` ➔ `Custom`)!
+>    - Press **`Ctrl + Alt + F`** anywhere to toggle webcam mirror (ON / OFF)!
+>    - Press **`Ctrl + Alt + T`** anywhere to toggle Discord Self-View Mode (ON / OFF)!
+>    - Press **`Ctrl + Alt + H`** to unhide/restore the window.
+> 2. **Terminal Console:** Click into the terminal window running Python and press **`m`** (mode), **`b`** (background), **`f`** (mirror), **`t`** (discord mode), **`h`** (show/hide), or **`q`** (quit).
+> 3. **Command Line Flag:** Start directly in your desired mode, e.g. `python its_giving_v2.py --bg remove --mode hand --discord`.
 >
 > > **Note (Windows 30 FPS Performance):** Minimizing an OpenCV window on Windows can cause the OS to throttle webcam capture down to 10 FPS. When minimized or hidden via `--hide`, the app bypasses OS window rendering and maintains a rock-solid 30 FPS virtual camera stream in Zoom/Meet. Press `h` or `Ctrl + Alt + H` at any time to restore the preview window.
+
+---
+
+### Webcam Mirror Pipeline & Meeting Apps (Zoom / Discord / Meet)
+
+The application handles mirroring at the **pipeline / coordinate level** rather than merely flipping post-rendered assets:
+
+```
+Camera Capture ➔ [Optional Mirror Flip] ➔ Face/Hand/Pose Detection ➔ Background Processing ➔ Render Overlays ➔ [Optional Discord Pre-Flip] ➔ Virtual Camera
+```
+
+* **Spatial Alignment:** When Mirror is ON, the camera frame is transformed before landmark detection, ensuring all effect origins (hand palms, face centers, gestures) naturally align with the mirrored person without coordinate re-mapping.
+* **Readable Text & Memes:** Text, numbers (like the viral "6 7" gesture), comic badges, and meme sprites are rendered directly onto the composited frame with normal left-to-right reading order and upright glyphs.
+* **Discord Self-View Mode (`--discord` or press `t` / `Ctrl + Alt + T`):**
+  - **The Discord Issue:** Discord by design applies a CSS horizontal flip (`transform: scaleX(-1)`) to your local self-view preview tile, and has no setting to disable it.
+  - **The Fix:** When Discord Mode is enabled, the virtual camera pre-flips the output frame before sending it to `pyvirtualcam`. Since `flip(flip(frame)) == frame`, Discord's forced preview mirror cancels out cleanly, making your local Discord screen display a 100% natural mirror with completely upright, readable text and effects!
+* **Explicit Settings:**
+  - Toggle **Mirror: ON** / **OFF** dynamically using **`f`** or **`Ctrl + Alt + F`** (CLI: `--mirror on/off`, `--no-flip`).
+  - Toggle **Discord Mode: ON** / **OFF** dynamically using **`t`** or **`Ctrl + Alt + T`** (CLI: `--discord`).
+* **Meeting Apps Recommended Setup:**
+  - **Discord:** Use `--discord` or press **`t`** / **`Ctrl + Alt + T`** so your self-view in Discord is un-reversed and text is readable.
+  - **Zoom & Teams:** Keep "Mirror my video" **UNCHECKED (OFF)** in Zoom/Teams settings; run the app normally (Discord Mode OFF).
+  - **Google Meet & OBS:** Run normally (Discord Mode OFF). Viewers already receive the correct upright feed.
 
 ---
 
