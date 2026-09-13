@@ -135,32 +135,84 @@ class WindowController:
                 pass
 
     def show(self):
+        self.hidden = False
         if sys.platform == "win32" and self.hwnd:
             try:
                 import ctypes
                 ctypes.windll.user32.ShowWindow(self.hwnd, 9)  # SW_RESTORE
-                self.hidden = False
             except Exception:
                 pass
-        else:
-            self.hidden = False
 
     def hide(self):
+        self.hidden = True
         if sys.platform == "win32" and self.hwnd:
             try:
                 import ctypes
                 ctypes.windll.user32.ShowWindow(self.hwnd, 0)  # SW_HIDE
-                self.hidden = True
             except Exception:
                 pass
-        else:
-            self.hidden = True
 
     def toggle(self):
         if self.hidden:
             self.show()
         else:
             self.hide()
+
+
+class HotkeyManager:
+    """Track keyboard input from OpenCV window, terminal console (msvcrt), and global hotkeys."""
+
+    def __init__(self):
+        self.prev_m = False
+        self.prev_h = False
+
+    def poll(self):
+        # 1. OpenCV window key (if window is active/focused)
+        k = cv2.pollKey() & 0xFF if hasattr(cv2, "pollKey") else cv2.waitKey(1) & 0xFF
+        if k != 255 and k != 0:
+            return chr(k).lower()
+
+        # 2. Terminal console key (when terminal is focused, e.g. in --hide mode)
+        if sys.platform == "win32":
+            try:
+                import msvcrt
+                if msvcrt.kbhit():
+                    ch = msvcrt.getch()
+                    if ch in (b"\x00", b"\xe0"):
+                        msvcrt.getch()
+                        return None
+                    return ch.decode("ascii", errors="ignore").lower()
+            except Exception:
+                pass
+
+        # 3. Global hotkeys on Windows (Ctrl+Alt+M for mode, Ctrl+Alt+H for hide/show)
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                u32 = ctypes.windll.user32
+                ctrl = bool(u32.GetAsyncKeyState(0x11) & 0x8000)
+                alt = bool(u32.GetAsyncKeyState(0x12) & 0x8000)
+                if ctrl and alt:
+                    m_down = bool(u32.GetAsyncKeyState(ord("M")) & 0x8000)
+                    if m_down and not self.prev_m:
+                        self.prev_m = True
+                        return "m"
+                    elif not m_down:
+                        self.prev_m = False
+
+                    h_down = bool(u32.GetAsyncKeyState(ord("H")) & 0x8000)
+                    if h_down and not self.prev_h:
+                        self.prev_h = True
+                        return "h"
+                    elif not h_down:
+                        self.prev_h = False
+                else:
+                    self.prev_m = False
+                    self.prev_h = False
+            except Exception:
+                pass
+
+        return None
 
 
 class Asset:
@@ -528,6 +580,12 @@ def main():
     window = "Reaction Cam  (q quit, d HUD, m mode, h hide/show, 1-9 0 - = [ p s test)"
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
     win_ctrl = WindowController(window, initial_hide=args.hide)
+    hotkey_mgr = HotkeyManager()
+    if args.hide:
+        print("\n[Background Mode Active (--hide)]")
+        print("  - Press 'm' in terminal or Ctrl+Alt+M anywhere to switch mode (MEME / HAND FX)")
+        print("  - Press 'h' in terminal or Ctrl+Alt+H anywhere to show/hide preview window")
+        print("  - Press 'q' in terminal to quit\n")
 
     if sys.platform == "win32":
         try:
@@ -633,18 +691,19 @@ def main():
                     preview = frame.copy()
                     draw_hud(preview, mode, hand_gesture, shown, raw, dbg, face, hands, body)
                 cv2.imshow(window, preview)
-            key = cv2.pollKey() & 0xFF if hasattr(cv2, "pollKey") else cv2.waitKey(1) & 0xFF
-            if key == ord("q"):
+            ch = hotkey_mgr.poll()
+            if ch == "q":
                 break
-            if key == ord("d"):
+            if ch == "d":
                 show_hud = not show_hud
-            elif key == ord("m"):
+            elif ch == "m":
                 mode = "hand" if mode == "meme" else "meme"
                 print(f"\n[Mode Switched] Current Mode: {mode.upper()}")
-            elif key == ord("h"):
+            elif ch == "h":
                 win_ctrl.toggle()
-            elif 0 < key < 256 and chr(key) in TEST_KEYS:
-                forced, forced_until = POSES[TEST_KEYS.index(chr(key))], time.monotonic() + 2.0
+                print(f"\n[Preview Window] {'Hidden' if win_ctrl.hidden else 'Restored'}")
+            elif ch and ch in TEST_KEYS:
+                forced, forced_until = POSES[TEST_KEYS.index(ch)], time.monotonic() + 2.0
     finally:
         if sys.platform == "win32":
             try:

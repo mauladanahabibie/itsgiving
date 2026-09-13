@@ -53,22 +53,29 @@ nothing in the code cares. Unpin one and you have to unpin all three.
 ## Running it
 
 ```bash
-python its_giving_v2.py --calibrate   # once, seven seconds
-python its_giving_v2.py               # preview + virtual camera (Meme mode)
-python its_giving_v2.py --mode hand   # start in Hand FX mode (Spiderman, etc.)
-python its_giving_v2.py --hide        # start hidden in background (full 30 FPS)
+python its_giving_v2.py --calibrate          # once, seven seconds
+python its_giving_v2.py                      # preview + virtual camera (Meme mode)
+python its_giving_v2.py --mode hand          # start in Hand FX mode (Spiderman, etc.)
+python its_giving_v2.py --hide               # start hidden in background (full 30 FPS)
+python its_giving_v2.py --hide --mode hand   # start directly in Hand FX background mode
 ```
 
-| key | does |
+| key / shortcut | does |
 |---|---|
-| `m` | **switch mode** between Meme Reaction (🎭) and Hand FX (🕸️) |
-| `q` | quit |
+| `m` (or **`Ctrl + Alt + M`**) | **switch mode** between Meme Reaction (🎭) and Hand FX (🕸️) |
+| `h` (or **`Ctrl + Alt + H`**) | toggle hide / show preview window |
+| `q` | quit (in preview window or terminal) |
 | `d` | toggle the HUD |
-| `h` | toggle hide / show preview window |
 | `c` | recalibrate (v2) |
 | `1`–`9` `0` `-` `=` `[` `p` `s` | force a reaction on screen for 2 seconds (in Meme mode) |
 
-> **Note (Windows 30 FPS Performance):** Minimizing an OpenCV window on Windows can cause the OS to throttle webcam capture down to 10 FPS. When minimized, the app automatically hides the preview window to bypass OS throttling and maintain a solid 30 FPS virtual camera stream in Zoom/Meet. Press `h` at any time to toggle the preview window back on.
+> **Controlling in Background Mode (`--hide`):**
+> When running with `--hide`, the preview window is not shown so normal OpenCV window clicks won't register. You have **3 easy ways** to switch mode or control the app:
+> 1. **Global Hotkeys (Anywhere):** Press **`Ctrl + Alt + M`** from anywhere (even while focused inside Zoom, Teams, Google Meet, or a game) to switch modes! Press **`Ctrl + Alt + H`** to unhide the window.
+> 2. **Terminal Console:** Click into the terminal window running Python and simply press **`m`** to switch mode, **`h`** to show the window, or **`q`** to quit.
+> 3. **Command Line Flag:** Start directly in your desired mode, e.g. `python its_giving_v2.py --hide --mode hand`.
+>
+> > **Note (Windows 30 FPS Performance):** Minimizing an OpenCV window on Windows can cause the OS to throttle webcam capture down to 10 FPS. When minimized or hidden via `--hide`, the app bypasses OS window rendering and maintains a rock-solid 30 FPS virtual camera stream in Zoom/Meet. Press `h` or `Ctrl + Alt + H` at any time to restore the preview window.
 
 ---
 
