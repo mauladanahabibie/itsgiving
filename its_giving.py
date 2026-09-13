@@ -8,7 +8,7 @@ virtual camera. See README.md.
 
   python its_giving.py [--camera 1] [--no-vcam] [--size 640x480] [--no-flip]
 
-Keys:  q quit   d toggle HUD   1-9 0 - = [ p s force-show a pose
+Keys:  q quit   d toggle HUD   m switch mode   1-9 0 - = [ p s force-show a pose
 """
 import argparse
 import os
@@ -23,6 +23,7 @@ import numpy as np
 import mediapipe as mp
 from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision
+from hand_fx import HandFXRenderer
 
 POSES = ["time_out", "heart", "cover_nose", "crashing_out", "dance", "nose_closed", "flirty",
          "tongue_out", "open_mouth", "disgusted", "talking_to_wall", "suspicious", "spin", "pray", "speed"]
@@ -280,13 +281,24 @@ class Face:
 class Hand:
     def __init__(self, lms, W, H):
         p = np.array([[l.x * W, l.y * H] for l in lms], np.float32)
+        self.pts = p
+        self.wrist = p[0]
         self.palm = p[[0, 5, 9, 13, 17]].mean(0)
         self.thumb, self.index, self.middle = p[4], p[8], p[12]
+        self.ring, self.pinky = p[16], p[20]
         d = p[9] - p[0]
         self.horizontal = abs(d[0]) > 1.5 * abs(d[1])
         self.vertical = abs(d[1]) > 1.5 * abs(d[0])
-        ext = [dist(p[0], p[t]) > 1.2 * dist(p[0], p[t - 2]) for t in (8, 12, 16, 20)]
-        self.open = sum(ext) >= 3
+        self.thumb_ext = dist(p[0], p[4]) > 1.15 * dist(p[0], p[2])
+        self.index_ext = dist(p[0], p[8]) > 1.15 * dist(p[0], p[6])
+        self.middle_ext = dist(p[0], p[12]) > 1.15 * dist(p[0], p[10])
+        self.ring_ext = dist(p[0], p[16]) > 1.15 * dist(p[0], p[14])
+        self.pinky_ext = dist(p[0], p[20]) > 1.15 * dist(p[0], p[18])
+        self.open = sum([self.index_ext, self.middle_ext, self.ring_ext, self.pinky_ext]) >= 3
+        self.is_spiderman = self.index_ext and self.pinky_ext and not self.middle_ext and not self.ring_ext
+        self.is_peace = self.index_ext and self.middle_ext and not self.ring_ext and not self.pinky_ext
+        self.is_gun = self.index_ext and self.thumb_ext and not self.middle_ext and not self.ring_ext and not self.pinky_ext
+        self.is_repulsor = self.open and not self.is_spiderman and not self.is_peace
 
 
 class Body:
@@ -432,7 +444,7 @@ def decide(face, hands, body, tongue, gesture):
     return None, d
 
 
-def draw_hud(img, shown, raw, d, face, hands, body):
+def draw_hud(img, mode, hand_gesture, shown, raw, d, face, hands, body):
     if face:
         x0, y0, x1, y1 = face.box
         cv2.rectangle(img, (x0, y0), (x1, y1), (0, 255, 0), 1)
@@ -441,12 +453,21 @@ def draw_hud(img, shown, raw, d, face, hands, body):
     if body and body.seen:
         for pt in np.vstack([body.shoulders, body.elbows]):
             cv2.circle(img, (int(pt[0]), int(pt[1])), 6, (255, 120, 0), -1)
-    lines = [
-        f"showing: {shown or '-'}   raw: {raw or '-'}   hands: {d.get('hands', 0)}   elbows up: {'Y' if d.get('elbows_up') else 'n'}",
-        f"jaw {d.get('jaw', 0):.2f}  tongue {d.get('tongue', 0):.2f}  pucker {d.get('pucker', 0):.2f}  turn {d.get('turn', 0):.2f}  squint {d.get('squint', 0):.2f}  gesture {d.get('gesture', 0):.3f}",
-        f"disgust {d.get('disgust', 0):.2f} = 2x sneer {d.get('sneer', 0):.2f} + brow {d.get('brow', 0):.2f} + frown {d.get('frown', 0):.2f} + lip {d.get('lip', 0):.2f}",
-        "keys: q quit  d hud  h hide/show  1-9 0 - = [ p s test poses",
-    ]
+    if mode == "hand":
+        lines = [
+            ("MODE: [HAND FX]  (press 'm' to switch to MEME)", (0, 255, 255)),
+            (f"Hands: {len(hands)}   Active FX: {hand_gesture or 'None'}", (0, 255, 0)),
+            ("Gestures: 🤟 Spiderman Web   👐 Kamehameha   ✋ Repulsor   👉 Gun   ✌️ Peace", (200, 200, 255)),
+            ("keys: q quit  d hud  h hide/show  m mode", (0, 255, 0)),
+        ]
+    else:
+        lines = [
+            ("MODE: [MEME REACTIONS]  (press 'm' to switch to HAND FX)", (0, 255, 255)),
+            (f"showing: {shown or '-'}   raw: {raw or '-'}   hands: {d.get('hands', 0)}   elbows up: {'Y' if d.get('elbows_up') else 'n'}", (0, 255, 0)),
+            (f"jaw {d.get('jaw', 0):.2f}  tongue {d.get('tongue', 0):.2f}  pucker {d.get('pucker', 0):.2f}  turn {d.get('turn', 0):.2f}  squint {d.get('squint', 0):.2f}  gesture {d.get('gesture', 0):.3f}", (0, 255, 0)),
+            (f"disgust {d.get('disgust', 0):.2f} = 2x sneer {d.get('sneer', 0):.2f} + brow {d.get('brow', 0):.2f} + frown {d.get('frown', 0):.2f} + lip {d.get('lip', 0):.2f}", (0, 255, 0)),
+            ("keys: q quit  d hud  h hide/show  m mode  1-9 0 - = [ p s test", (0, 255, 0)),
+        ]
     for i, t in enumerate(lines):
         y = 24 + 22 * i
         cv2.putText(img, t, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3)
@@ -461,6 +482,7 @@ def main():
     ap.add_argument("--size", default="1280x720", help="capture size, e.g. 1280x720 or 640x480 (lower = faster)")
     ap.add_argument("--no-flip", action="store_true", help="don't mirror the image")
     ap.add_argument("--hide", action="store_true", help="start with preview window hidden for background operation")
+    ap.add_argument("--mode", choices=["meme", "hand"], default="meme", help="starting mode: 'meme' for meme reactions, 'hand' for superhero hand FX")
     args = ap.parse_args()
 
     model_paths = ensure_models()
@@ -487,7 +509,7 @@ def main():
     H, W = frame.shape[:2]
     print(f"Camera {args.camera}: {W}x{H}")
 
-    window = "Reaction Cam  (q quit, d HUD, h hide/show, 1-9 0 - = [ p s test)"
+    window = "Reaction Cam  (q quit, d HUD, m mode, h hide/show, 1-9 0 - = [ p s test)"
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
     win_ctrl = WindowController(window, initial_hide=args.hide)
 
@@ -515,7 +537,10 @@ def main():
     forced, forced_until = None, 0.0
     sm_center, sm_h = np.array([W / 2, H / 2], np.float32), H * 0.45
     t_start, last_ts = time.monotonic(), -1
-    print("Running. Focus the preview window: q quit, d HUD, 1-9 0 - = [ p s test a pose")
+    mode = args.mode
+    hand_fx = HandFXRenderer()
+    hand_gesture = None
+    print("Running. Focus the preview window: q quit, d HUD, m mode, 1-9 0 - = [ p s test a pose")
 
     try:
         while True:
@@ -539,38 +564,45 @@ def main():
             hands = [Hand(h, W, H) for h in hr.hand_landmarks]
             body = Body(pr.pose_landmarks[0], W, H) if pr.pose_landmarks else None
 
-            tongue = tongue_score(frame, face, hands) if face is not None else 0.0
-            gesture = motion.update(hands, face)
-            raw, dbg = decide(face, hands, body, tongue, gesture)
+            raw, dbg = None, {}
 
-            fired = None
-            for p in POSES:
-                arm[p] = arm[p] + 1 if raw == p else 0
-                if raw == p and arm[p] >= ARM.get(p, 3):
-                    fired = p
-            now = time.monotonic()
-            if forced and now < forced_until:
-                fired = forced
-            if fired:
-                if fired != shown:
-                    shown_since = now
-                shown, hold = fired, HOLD_FRAMES
-            elif hold > 0:
-                hold -= 1
-            else:
+            if mode == "hand":
+                hand_gesture = hand_fx.render(frame, hands, face)
                 shown = None
+            else:
+                hand_gesture = None
+                tongue = tongue_score(frame, face, hands) if face is not None else 0.0
+                gesture = motion.update(hands, face)
+                raw, dbg = decide(face, hands, body, tongue, gesture)
 
-            if face is not None:
-                sm_center = 0.7 * sm_center + 0.3 * np.array(face.center, np.float32)
-                sm_h = 0.7 * sm_h + 0.3 * face.h * FACE_SCALE
+                fired = None
+                for p in POSES:
+                    arm[p] = arm[p] + 1 if raw == p else 0
+                    if raw == p and arm[p] >= ARM.get(p, 3):
+                        fired = p
+                now = time.monotonic()
+                if forced and now < forced_until:
+                    fired = forced
+                if fired:
+                    if fired != shown:
+                        shown_since = now
+                    shown, hold = fired, HOLD_FRAMES
+                elif hold > 0:
+                    hold -= 1
+                else:
+                    shown = None
 
-            if shown:
-                asset = assets[shown]
-                idx = asset.frame_at(int((now - shown_since) * 1000))
-                h = int(min(sm_h, H * 0.98, (W * 0.98) / asset.aspect)) // 8 * 8
-                sprite = asset.scaled(idx, max(h, 8))
-                sh, sw = sprite.shape[:2]
-                overlay(frame, sprite, int(sm_center[0] - sw / 2), int(sm_center[1] - sh / 2 - 0.05 * sh))
+                if face is not None:
+                    sm_center = 0.7 * sm_center + 0.3 * np.array(face.center, np.float32)
+                    sm_h = 0.7 * sm_h + 0.3 * face.h * FACE_SCALE
+
+                if shown:
+                    asset = assets[shown]
+                    idx = asset.frame_at(int((now - shown_since) * 1000))
+                    h = int(min(sm_h, H * 0.98, (W * 0.98) / asset.aspect)) // 8 * 8
+                    sprite = asset.scaled(idx, max(h, 8))
+                    sh, sw = sprite.shape[:2]
+                    overlay(frame, sprite, int(sm_center[0] - sw / 2), int(sm_center[1] - sh / 2 - 0.05 * sh))
 
             win_ctrl.update()
 
@@ -583,17 +615,20 @@ def main():
                 preview = frame
                 if show_hud:
                     preview = frame.copy()
-                    draw_hud(preview, shown, raw, dbg, face, hands, body)
+                    draw_hud(preview, mode, hand_gesture, shown, raw, dbg, face, hands, body)
                 cv2.imshow(window, preview)
             key = cv2.pollKey() & 0xFF if hasattr(cv2, "pollKey") else cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 break
             if key == ord("d"):
                 show_hud = not show_hud
+            elif key == ord("m"):
+                mode = "hand" if mode == "meme" else "meme"
+                print(f"\n[Mode Switched] Current Mode: {mode.upper()}")
             elif key == ord("h"):
                 win_ctrl.toggle()
             elif 0 < key < 256 and chr(key) in TEST_KEYS:
-                forced, forced_until = POSES[TEST_KEYS.index(chr(key))], now + 2.0
+                forced, forced_until = POSES[TEST_KEYS.index(chr(key))], time.monotonic() + 2.0
     finally:
         if sys.platform == "win32":
             try:

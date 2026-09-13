@@ -14,14 +14,15 @@ add more memes to your heart's desire.
 Point Zoom at its virtual camera and the whole call sees it.
 
 ```bash
-python its_giving.py              # preview + virtual camera
+python its_giving.py              # preview + virtual camera (Meme mode)
+python its_giving.py --mode hand  # start directly in Hand FX mode
 python its_giving.py --hide       # background mode (preview hidden, full 30 FPS)
 python its_giving.py --no-vcam    # preview only
 ```
 
-Fifteen reactions: time out, heart hands, hands over face, crashing out,
-dancing, nose pinch, flirty, tongue out, gasp, disgust, talking to the
-wall, side-eye, spinning, prayer, and Speed rizz (pucker).
+**Dual Modes:**
+1. **Meme Mode (🎭):** 15 meme reaction face overlays following your head.
+2. **Hand FX Mode (🕸️):** Real-time superhero & visual effects on your hands (Spiderman webs `🤟`, Kamehameha energy ball `👐`, Iron Man repulsor `✋`, Finger Gun `👉`, and Peace sign sparkles `✌️`). Press **`m`** at any time to switch instantly!
 
 There's a second file, `its_giving_v2.py`, which is the same thing with the
 expression thresholds calibrated to *your* face instead of to a number I
@@ -53,17 +54,19 @@ nothing in the code cares. Unpin one and you have to unpin all three.
 
 ```bash
 python its_giving_v2.py --calibrate   # once, seven seconds
-python its_giving_v2.py               # preview + virtual camera
+python its_giving_v2.py               # preview + virtual camera (Meme mode)
+python its_giving_v2.py --mode hand   # start in Hand FX mode (Spiderman, etc.)
 python its_giving_v2.py --hide        # start hidden in background (full 30 FPS)
 ```
 
 | key | does |
 |---|---|
+| `m` | **switch mode** between Meme Reaction (🎭) and Hand FX (🕸️) |
 | `q` | quit |
 | `d` | toggle the HUD |
 | `h` | toggle hide / show preview window |
-| `c` | recalibrate |
-| `1`–`9` `0` `-` `=` `[` `p` `s` | force a reaction on screen for 2 seconds |
+| `c` | recalibrate (v2) |
+| `1`–`9` `0` `-` `=` `[` `p` `s` | force a reaction on screen for 2 seconds (in Meme mode) |
 
 > **Note (Windows 30 FPS Performance):** Minimizing an OpenCV window on Windows can cause the OS to throttle webcam capture down to 10 FPS. When minimized, the app automatically hides the preview window to bypass OS throttling and maintain a solid 30 FPS virtual camera stream in Zoom/Meet. Press `h` at any time to toggle the preview window back on.
 
@@ -149,6 +152,20 @@ Assets live in `assets/`, named after the pose — `heart.jpeg`, `spin.gif`.
 Swap in your own by dropping a file with the right name; JPEG, PNG and animated
 GIF all work, alpha channels composite properly, and GIF frame timings are read
 from the file. A missing asset gets you a red placeholder, not a crash.
+
+---
+
+## Hand FX Mode (Superhero & Action Gestures)
+
+Press **`m`** to switch between **Meme Mode** and **Hand FX Mode** in real-time. In Hand FX mode, facial memes are suppressed and dynamic superhero effects render directly over your hands:
+
+| gesture | hand pose | visual effect |
+|---|---|---|
+| **Spiderman Web** | `🤟` (Thumb, index, and pinky extended; middle and ring folded) | Shoots a procedural web net with radial threads, concentric webbing rings, and a comic **"THWIP!"** sound effect badge |
+| **Kamehameha / Energy Ball** | `👐` (Both palms open facing each other close together) | Pulsing cyan/white plasma orb with animated electric lightning bolts arcing between palms |
+| **Iron Man Repulsor** | `✋` (Single palm flat and open towards camera) | High-tech repulsor core with expanding shockwave energy rings |
+| **Finger Gun** | `👉` (Index finger pointed forward, thumb up like a pistol hammer) | Glowing laser blaster beam with muzzle flash and a comic **"BANG!"** badge |
+| **Peace Sparkles** | `✌️` (Index and middle fingers extended in a V-sign) | Floating orbital magical sparkles, pastel stars, and a **"PEACE!"** badge |
 
 ---
 ## Making it yours
