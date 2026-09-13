@@ -476,11 +476,18 @@ class Hand:
         self.middle_ext = dist(p[0], p[12]) > 1.15 * dist(p[0], p[10])
         self.ring_ext = dist(p[0], p[16]) > 1.15 * dist(p[0], p[14])
         self.pinky_ext = dist(p[0], p[20]) > 1.15 * dist(p[0], p[18])
-        self.open = sum([self.index_ext, self.middle_ext, self.ring_ext, self.pinky_ext]) >= 3
-        self.is_spiderman = self.index_ext and self.pinky_ext and not self.middle_ext and not self.ring_ext
-        self.is_peace = self.index_ext and self.middle_ext and not self.ring_ext and not self.pinky_ext
-        self.is_gun = self.index_ext and self.thumb_ext and not self.middle_ext and not self.ring_ext and not self.pinky_ext
-        self.is_repulsor = self.open and not self.is_spiderman and not self.is_peace
+        ext_count = sum([self.index_ext, self.middle_ext, self.ring_ext, self.pinky_ext])
+        self.open = ext_count >= 3
+        self.is_thumbs_up = bool(self.thumb_ext and ext_count == 0 and p[4][1] < p[2][1] and p[4][1] < p[5][1])
+        self.is_fist = bool(ext_count == 0 and not self.is_thumbs_up)
+        self.is_pointing = bool(self.index_ext and not self.thumb_ext and ext_count == 1)
+        self.is_peace = bool(self.index_ext and self.middle_ext and not self.ring_ext and not self.pinky_ext)
+        self.is_gun = bool(self.index_ext and self.thumb_ext and not self.middle_ext and not self.ring_ext and not self.pinky_ext)
+        horns = bool(self.index_ext and self.pinky_ext and not self.middle_ext and not self.ring_ext)
+        self.is_spiderman = bool(horns and self.thumb_ext)
+        self.is_rock_on = bool(horns and not self.thumb_ext)
+        self.is_six = bool(self.thumb_ext and self.pinky_ext and not self.index_ext and not self.middle_ext and not self.ring_ext)
+        self.is_repulsor = bool(self.open and not self.is_spiderman and not self.is_rock_on and not self.is_peace and not self.is_six)
 
 
 class Body:
@@ -656,7 +663,9 @@ def draw_hud(img, mode, hand_gesture, shown, raw, d, face, hands, body, base):
         lines = [
             ("MODE: [HAND FX]  (press 'm' to switch to MEME)", (0, 255, 255)),
             (f"Hands: {len(hands)}   Active FX: {hand_gesture or 'None'}", (0, 255, 0)),
-            ("Gestures: 🤟 Spiderman Web   👐 Kamehameha   ✋ Repulsor   👉 Gun   ✌️ Peace", (200, 200, 255)),
+            ("Gestures: 🤟 Spiderman  👐 Kamehameha  🙌 Genkidama  ⚖️ 6 7 Motion", (200, 200, 255)),
+            ("          ✊ Claws      ✋ Repulsor    🤘 Rock On    👉 Gun", (200, 200, 255)),
+            ("          ☝️ Eldritch   ✌️ Peace       👍 +1000 Aura 🤙 Shaka 6", (200, 200, 255)),
             ("keys: q quit  d hud  h hide/show  m mode", (0, 255, 0)),
         ]
     else:

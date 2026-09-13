@@ -22,7 +22,7 @@ python its_giving.py --no-vcam    # preview only
 
 **Dual Modes:**
 1. **Meme Mode (🎭):** 15 meme reaction face overlays following your head.
-2. **Hand FX Mode (🕸️):** Real-time superhero & visual effects on your hands (Spiderman webs `🤟`, Kamehameha energy ball `👐`, Iron Man repulsor `✋`, Finger Gun `👉`, and Peace sign sparkles `✌️`). Press **`m`** at any time to switch instantly!
+2. **Hand FX Mode (🕸️):** Real-time superhero & visual effects on your hands (Spiderman `🤟`, Kamehameha `👐`, Spirit Bomb `🙌`, viral 67 Motion / Hand Sign `6️⃣7️⃣`, Wolverine Claws `✊`, Iron Man repulsor `✋`, Rock On fire `🤘`, Finger Gun `👉`, Doctor Strange Eldritch `☝️`, Peace sparkles `✌️`, Thumbs Up `👍`, and Shaka 6 `🤙`). Press **`m`** at any time to switch instantly!
 
 There's a second file, `its_giving_v2.py`, which is the same thing with the
 expression thresholds calibrated to *your* face instead of to a number I
@@ -161,11 +161,18 @@ Press **`m`** to switch between **Meme Mode** and **Hand FX Mode** in real-time.
 
 | gesture | hand pose | visual effect |
 |---|---|---|
-| **Spiderman Web** | `🤟` (Thumb, index, and pinky extended; middle and ring folded) | Shoots a procedural web net with radial threads, concentric webbing rings, and a comic **"THWIP!"** sound effect badge |
-| **Kamehameha / Energy Ball** | `👐` (Both palms open facing each other close together) | Pulsing cyan/white plasma orb with animated electric lightning bolts arcing between palms |
-| **Iron Man Repulsor** | `✋` (Single palm flat and open towards camera) | High-tech repulsor core with expanding shockwave energy rings |
+| **Spiderman Web** | `🤟` (Thumb, index, & pinky out; middle & ring folded) | Shoots a procedural web net with radial threads, concentric webbing rings, and a comic **"THWIP!"** badge |
+| **Kamehameha / Energy Ball** | `👐` (Both palms open facing each other close together) | Pulsing cyan/white plasma orb with animated electric lightning bolts arcing between palms and a **"KAMEHAMEHA!"** badge |
+| **Spirit Bomb / Genkidama** | `🙌` (Both hands open raised high above head & spread) | Massive cosmic blue celestial energy sphere hovering overhead with inflowing universe stardust and a **"GENKIDAMA!"** badge |
+| **67 Hand Motion / Sign** | `6️⃣7️⃣` (Both hands open moving alternately up & down in a see-saw motion, OR one hand 6 `🤙` and other hand 7 `👉`) | Animated see-saw balance scale beam with glowing holographic **"6"** and **"7"** hovering over hands and a **"SIX SEVEN (6 7)!"** comic badge |
+| **Wolverine Claws** | `✊` (Clenched fist) | Three sharp metallic adamantium blades extending from the knuckles with chrome sheen, sparks, and a comic **"SNIKT!"** badge |
+| **Iron Man Repulsor** | `✋` (Single palm flat and open towards camera) | High-tech glowing repulsor core with expanding shockwave energy pulse rings and a **"REPULSOR"** badge |
+| **Rock On Fire** | `🤘` (Devil horns: index & pinky out; thumb folded over middle/ring) | Roaring animated flame plumes erupting from fingertips with electric purple lightning and a **"ROCK ON!"** badge |
 | **Finger Gun** | `👉` (Index finger pointed forward, thumb up like a pistol hammer) | Glowing laser blaster beam with muzzle flash and a comic **"BANG!"** badge |
+| **Doctor Strange Mandala** | `☝️` (Single index finger pointing, thumb & other fingers curled) | Mystic rotating sacred geometry Tao mandala shield with concentric circles, 8-point stars, runes, and sparks with an **"ELDRITCH!"** badge |
 | **Peace Sparkles** | `✌️` (Index and middle fingers extended in a V-sign) | Floating orbital magical sparkles, pastel stars, and a **"PEACE!"** badge |
+| **Thumbs Up (+1000 Aura)** | `👍` (Only thumb extended upward, fingers curled) | Radiant golden sunburst rays, floating golden celebration stars, and a glowing **"+1000 AURA"** badge |
+| **Shaka 6** | `🤙` (Thumb & pinky extended, index/middle/ring curled) | Universal hand sign 6 with electric energy waves and a **"SHAKA 6!"** badge |
 
 ---
 ## Making it yours
