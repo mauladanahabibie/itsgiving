@@ -18,13 +18,23 @@ import sys
 import time
 import urllib.request
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import cv2
 import numpy as np
 import mediapipe as mp
 from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision
 from hand_fx import HandFXRenderer
+from hand_tracking import HandTrackingEngine
 from background import BackgroundEngine, BG_MODES
+
+MODES = ["meme", "hand", "tracking"]
 
 POSES = ["time_out", "heart", "cover_nose", "crashing_out", "dance", "nose_closed", "flirty",
          "tongue_out", "open_mouth", "disgusted", "talking_to_wall", "suspicious", "spin", "pray", "speed"]
@@ -574,7 +584,7 @@ def decide(face, hands, body, tongue, gesture):
     return None, d
 
 
-def draw_hud(img, mode, hand_gesture, shown, raw, d, face, hands, body, bg_mode="original", mirrored=True, discord_mode=False):
+def draw_hud(img, mode, hand_gesture, shown, raw, d, face, hands, body, bg_mode="original", mirrored=True, discord_mode=False, hand_tracker=None):
     if face:
         x0, y0, x1, y1 = face.box
         cv2.rectangle(img, (x0, y0), (x1, y1), (0, 255, 0), 1)
@@ -583,9 +593,22 @@ def draw_hud(img, mode, hand_gesture, shown, raw, d, face, hands, body, bg_mode=
     if body and body.seen:
         for pt in np.vstack([body.shoulders, body.elbows]):
             cv2.circle(img, (int(pt[0]), int(pt[1])), 6, (255, 120, 0), -1)
-    if mode == "hand":
+    if mode == "tracking":
+        filt_name = hand_tracker.active_filter_name if hand_tracker else "None"
+        is_3d = hand_tracker.is_3d_mode if hand_tracker else False
+        mode_label = "3D Dual-Mesh" if is_3d else "2D Quad Portal"
+        portal_status = "OPEN (Active)" if (hand_tracker and hand_tracker.portal_active) else "Bentangkan 2 tangan untuk buka portal"
         lines = [
-            ("MODE: [HAND FX]  (press 'm' to switch to MEME)", (0, 255, 255)),
+            (f"MODE: [PORTAL FILTER 🖐️ - {mode_label}]  (press 'm' to switch mode, 'c' toggle 2D/3D)", (0, 255, 255)),
+            (f"Background: [{bg_mode.upper()}]   Mirror: [{'ON' if mirrored else 'OFF'}]   Discord Mode: [{'ON' if discord_mode else 'OFF'}]", (0, 255, 255)),
+            (f"Active Filter: [{filt_name}]   Portal: {portal_status}", (0, 255, 0)),
+            ("Gestures: 🖐️ Bentangkan tangan (portal)  🤏 Cubit jempol-kelingking (ganti filter)  ✊✊ 2 Tinju (toggle 3D)", (200, 200, 255)),
+            ("Filters: DUAL-TONE, THERMAL, SKETCH, GLITCH, NEON, PIXELATE, GALAXY, CARTOON, RAINBOW, BLUR, INVERT, SEPIA...", (200, 200, 255)),
+            ("keys: q quit  d hud  h hide/show  m mode  n next  p prev  c 2D/3D mode  r reset  b bg  f mirror  t discord", (0, 255, 0)),
+        ]
+    elif mode == "hand":
+        lines = [
+            ("MODE: [HAND FX 🕸️]  (press 'm' to switch mode)", (0, 255, 255)),
             (f"Background: [{bg_mode.upper()}]   Mirror: [{'ON' if mirrored else 'OFF'}]   Discord Mode: [{'ON' if discord_mode else 'OFF'}]", (0, 255, 255)),
             (f"Hands: {len(hands)}   Active FX: {hand_gesture or 'None'}", (0, 255, 0)),
             ("Gestures: 🤟 Spiderman  👐 Kamehameha  🙌 Genkidama  ⚖️ 6 7 Motion", (200, 200, 255)),
@@ -595,17 +618,17 @@ def draw_hud(img, mode, hand_gesture, shown, raw, d, face, hands, body, bg_mode=
         ]
     else:
         lines = [
-            ("MODE: [MEME REACTIONS]  (press 'm' to switch to HAND FX)", (0, 255, 255)),
+            ("MODE: [MEME REACTIONS 🎭]  (press 'm' to switch mode)", (0, 255, 255)),
             (f"Background: [{bg_mode.upper()}]   Mirror: [{'ON' if mirrored else 'OFF'}]   Discord Mode: [{'ON' if discord_mode else 'OFF'}]", (0, 255, 255)),
             (f"showing: {shown or '-'}   raw: {raw or '-'}   hands: {d.get('hands', 0)}   elbows up: {'Y' if d.get('elbows_up') else 'n'}", (0, 255, 0)),
             (f"jaw {d.get('jaw', 0):.2f}  tongue {d.get('tongue', 0):.2f}  pucker {d.get('pucker', 0):.2f}  turn {d.get('turn', 0):.2f}  squint {d.get('squint', 0):.2f}  gesture {d.get('gesture', 0):.3f}", (0, 255, 0)),
             (f"disgust {d.get('disgust', 0):.2f} = 2x sneer {d.get('sneer', 0):.2f} + brow {d.get('brow', 0):.2f} + frown {d.get('frown', 0):.2f} + lip {d.get('lip', 0):.2f}", (0, 255, 0)),
             ("keys: q quit  d hud  h hide/show  m mode  b bg  f mirror  t discord  1-9 0 - = [ p s test", (0, 255, 0)),
         ]
-    for i, t in enumerate(lines):
+    for i, (t, colour) in enumerate(lines):
         y = 24 + 22 * i
         cv2.putText(img, t, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3)
-        cv2.putText(img, t, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 1)
+        cv2.putText(img, t, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, colour, 1)
 
 
 def main():
@@ -619,7 +642,7 @@ def main():
     ap.add_argument("--no-flip", action="store_true", help="alias for --mirror off (don't mirror the camera feed)")
     ap.add_argument("--hide", action="store_true", help="start with preview window hidden for background operation")
     ap.add_argument("--fps", type=int, default=None, help="target capture and virtual camera FPS (e.g. 30 or 60). If omitted, automatically uses the highest FPS supported by your webcam.")
-    ap.add_argument("--mode", choices=["meme", "hand"], default="meme", help="starting mode: 'meme' for meme reactions, 'hand' for superhero hand FX")
+    ap.add_argument("--mode", choices=MODES, default="meme", help="starting mode: 'meme' for meme reactions, 'hand' for superhero hand FX, 'tracking' for interactive touchless filters")
     ap.add_argument("--bg", choices=["original", "remove", "blur", "custom", "transparent", "green"], default="original",
                     help="starting background mode: 'original', 'remove', 'blur', 'custom'")
     ap.add_argument("--bg-image", default="assets/background.jpeg", help="path to custom background image")
@@ -665,7 +688,7 @@ def main():
     cam_fps = int(round(raw_fps)) if raw_fps > 0 else (args.fps if args.fps else 30)
     print(f"Camera {args.camera}: {W}x{H} @ {cam_fps} FPS")
 
-    window = "Reaction Cam  (q quit, d HUD, m mode, b bg, f mirror, t discord, h hide/show, 1-9 0 - = [ p s test)"
+    window = "Reaction Cam  (q quit, d HUD, m mode, b bg, f mirror, t discord, r reset, h hide/show, 1-9 0 - = [ p s test)"
     win_ctrl = WindowController(window, initial_hide=args.hide)
     if not args.hide:
         win_ctrl.ensure_window()
@@ -674,15 +697,18 @@ def main():
 
     print(f"\n[Mirror Setting: {'ON' if mirrored else 'OFF'}] (Press 'f' or Ctrl+Alt+F to toggle)")
     print(f"[Discord Mode: {'ON' if discord_mode else 'OFF'}] (Press 't' or Ctrl+Alt+T to toggle)")
+    mode_icon = "🎭 MEME" if args.mode == "meme" else ("🕸️ HAND FX" if args.mode == "hand" else "🖐️ HAND TRACKING")
+    print(f"[Starting Mode: {mode_icon}]")
     print("  * Virtual camera outputs ready-to-use frame with natural spatial arrangement & readable text.")
     print("  * Discord users: enable Discord Mode ('t' or --discord) so your local self-view preview is 100% upright & readable!\n")
 
     if args.hide:
         print("[Background Mode Active (--hide)]")
-        print("  - Press 'm' in terminal or Ctrl+Alt+M anywhere to switch mode (MEME / HAND FX)")
+        print("  - Press 'm' in terminal or Ctrl+Alt+M anywhere to switch mode (MEME / HAND FX / HAND TRACKING)")
         print("  - Press 'b' in terminal or Ctrl+Alt+B anywhere to cycle background (ORIGINAL / REMOVE / BLUR / CUSTOM)")
         print(f"  - Press 'f' in terminal or Ctrl+Alt+F anywhere to toggle webcam mirror (Current: {'ON' if mirrored else 'OFF'})")
         print(f"  - Press 't' in terminal or Ctrl+Alt+T anywhere to toggle Discord Mode (Current: {'ON' if discord_mode else 'OFF'})")
+        print("  - Press 'r' in terminal to reset interactive filters (in Hand Tracking mode)")
         print("  - Press 'h' in terminal or Ctrl+Alt+H anywhere to show/hide preview window")
         print("  - Press 'q' in terminal to quit\n")
 
@@ -712,8 +738,9 @@ def main():
     t_start, last_ts = time.monotonic(), -1
     mode = args.mode
     hand_fx = HandFXRenderer()
+    hand_tracker = HandTrackingEngine(W, H)
     hand_gesture = None
-    print("Running. Focus the preview window: q quit, d HUD, m mode, b bg, f mirror, 1-9 0 - = [ p s test a pose")
+    print("Running. Focus the preview window: q quit, d HUD, m mode, b bg, f mirror, t discord, r reset, 1-9 0 - = [ p s test a pose")
 
     try:
         while True:
@@ -737,13 +764,17 @@ def main():
             hands = [Hand(h, W, H) for h in hr.hand_landmarks]
             body = Body(pr.pose_landmarks[0], W, H) if pr.pose_landmarks else None
 
-            # --- Pipeline: Background Processing (BEFORE Hand FX and Meme overlays) ---
+            # --- Pipeline: Background Processing (BEFORE Hand FX / Hand Tracking and Meme overlays) ---
             frame = bg_engine.process(frame, mp_img, ts, face=face, hands=hands)
 
             raw, dbg = None, {}
 
             if mode == "hand":
                 hand_gesture = hand_fx.render(frame, hands, face)
+                shown = None
+            elif mode == "tracking":
+                hand_tracker.update_and_render(frame, hands)
+                hand_gesture = None
                 shown = None
             else:
                 hand_gesture = None
@@ -791,7 +822,7 @@ def main():
                 preview = frame
                 if show_hud:
                     preview = frame.copy()
-                    draw_hud(preview, mode, hand_gesture, shown, raw, dbg, face, hands, body, bg_engine.mode, mirrored=mirrored, discord_mode=discord_mode)
+                    draw_hud(preview, mode, hand_gesture, shown, raw, dbg, face, hands, body, bg_engine.mode, mirrored=mirrored, discord_mode=discord_mode, hand_tracker=hand_tracker)
                 cv2.imshow(window, preview)
             ch = hotkey_mgr.poll(has_window=(not win_ctrl.hidden))
             if ch == "q":
@@ -799,8 +830,19 @@ def main():
             if ch == "d":
                 show_hud = not show_hud
             elif ch == "m":
-                mode = "hand" if mode == "meme" else "meme"
-                print(f"\n[Mode Switched] Current Mode: {mode.upper()}")
+                idx = MODES.index(mode) if mode in MODES else 0
+                mode = MODES[(idx + 1) % len(MODES)]
+                icon = "🎭 MEME" if mode == "meme" else ("🕸️ HAND FX" if mode == "hand" else "🖐️ HAND TRACKING")
+                print(f"\n[Mode Switched] Current Mode: {mode.upper()} ({icon})")
+            elif ch == "n":
+                if mode == "tracking":
+                    hand_tracker.next_filter(1)
+            elif ch == "p":
+                if mode == "tracking":
+                    hand_tracker.next_filter(-1)
+            elif ch == "r":
+                if mode == "tracking":
+                    hand_tracker.reset()
             elif ch == "b":
                 new_bg = bg_engine.cycle_mode()
                 print(f"\n[Background Switched] Current Mode: {new_bg.upper()}")
@@ -816,6 +858,10 @@ def main():
             elif ch == "h":
                 win_ctrl.toggle()
                 print(f"\n[Preview Window] {'Hidden' if win_ctrl.hidden else 'Restored'}")
+            elif ch == "c":
+                if mode == "tracking":
+                    is_3d = hand_tracker.toggle_3d_mode()
+                    print(f"\n[Hand Tracking] Portal Mode: {'3D Dual-Mesh Mode' if is_3d else '2D Single Quad Mode'}")
             elif ch and ch in TEST_KEYS:
                 forced, forced_until = POSES[TEST_KEYS.index(ch)], time.monotonic() + 2.0
     finally:

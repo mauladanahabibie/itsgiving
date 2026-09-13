@@ -14,15 +14,19 @@ add more memes to your heart's desire.
 Point Zoom at its virtual camera and the whole call sees it.
 
 ```bash
-python its_giving.py              # preview + virtual camera (Meme mode)
-python its_giving.py --mode hand  # start directly in Hand FX mode
-python its_giving.py --hide       # background mode (preview hidden, full 30 FPS)
-python its_giving.py --no-vcam    # preview only
+python its_giving.py                  # preview + virtual camera (Meme mode)
+python its_giving.py --mode hand      # start directly in Hand FX mode
+python its_giving.py --mode tracking  # start directly in Hand Tracking mode
+python its_giving.py --hide           # background mode (preview hidden, full 60 FPS)
+python its_giving.py --no-vcam        # preview only
 ```
 
-**Dual Modes:**
+**3 Independent Modes:**
 1. **Meme Mode (🎭):** 15 meme reaction face overlays following your head.
-2. **Hand FX Mode (🕸️):** Real-time superhero & visual effects on your hands (Spiderman `🤟`, Kamehameha `👐`, Spirit Bomb `🙌`, viral 67 Motion / Hand Sign `6️⃣7️⃣`, Wolverine Claws `✊`, Iron Man repulsor `✋`, Rock On fire `🤘`, Finger Gun `👉`, Doctor Strange Eldritch `☝️`, Peace sparkles `✌️`, Thumbs Up `👍`, and Shaka 6 `🤙`). Press **`m`** at any time to switch instantly!
+2. **Hand FX Mode (🕸️):** Real-time superhero & visual effects on your hands (Spiderman `🤟`, Kamehameha `👐`, Spirit Bomb `🙌`, viral 67 Motion / Hand Sign `6️⃣7️⃣`, Wolverine Claws `✊`, Iron Man repulsor `✋`, Rock On fire `🤘`, Finger Gun `👉`, Doctor Strange Eldritch `☝️`, Peace sparkles `✌️`, Thumbs Up `👍`, and Shaka 6 `🤙`).
+3. **Hand Tracking Mode (🖐️):** Portal Filter interaktif ala RetroLens & Python-Handtrack! Buka portal dimensi di antara tangan/ujung jari Anda secara real-time. Area di dalam portal ditransformasikan dengan 15 filter retro/VFX (Dual-Tone, Thermal, Sketch, Glitch, Galaxy, Neon, Pixelate, Cartoon, Rainbow, Blur, dll.) lengkap dengan border neon bercahaya, partikel debu kosmik, dan pergantian filter tanpa sentuh lewat cubit jempol-kelingking atau sentuh telunjuk. Terdapat juga mode 3D Dual-Mesh portal ganda!
+
+Press **`m`** (or `Ctrl + Alt + M`) at any time to cycle between all 3 modes!
 
 There's a second file, `its_giving_v2.py`, which is the same thing with the
 expression thresholds calibrated to *your* face instead of to a number I
@@ -66,7 +70,8 @@ python its_giving_v2.py --hide --mode hand   # start directly in Hand FX backgro
 
 | key / shortcut | does |
 |---|---|
-| `m` (or **`Ctrl + Alt + M`**) | **switch mode** between Meme Reaction (🎭) and Hand FX (🕸️) |
+| `m` (or **`Ctrl + Alt + M`**) | **cycle mode**: `Meme Reaction (🎭)` ➔ `Hand FX (🕸️)` ➔ `Hand Tracking (🖐️)` |
+| `r` | **reset interactive filters** back to default screen positions (in Hand Tracking mode) |
 | `b` (or **`Ctrl + Alt + B`**) | **cycle background**: `Original` ➔ `Remove` (Chroma/Transparent) ➔ `Blur` ➔ `Custom Image` |
 | `f` (or **`Ctrl + Alt + F`**) | **toggle mirror/flip**: Mirrored (ON) ➔ Normal (OFF) |
 | `t` (or **`Ctrl + Alt + T`**) | **toggle Discord Self-View Mode**: pre-flips vcam output so Discord's preview displays 100% upright text & natural mirror |
@@ -231,6 +236,57 @@ Press **`m`** to switch between **Meme Mode** and **Hand FX Mode** in real-time.
 | **Peace Sparkles** | `✌️` (Index and middle fingers extended in a V-sign) | Floating orbital magical sparkles, pastel stars, and a **"PEACE!"** badge |
 | **Thumbs Up (+1000 Aura)** | `👍` (Only thumb extended upward, fingers curled) | Radiant golden sunburst rays, floating golden celebration stars, and a glowing **"+1000 AURA"** badge |
 | **Shaka 6** | `🤙` (Thumb & pinky extended, index/middle/ring curled) | Universal hand sign 6 with electric energy waves and a **"SHAKA 6!"** badge |
+
+---
+
+## Hand Tracking Mode (Portal Filter ala RetroLens & Python-Handtrack)
+
+Press **`m`** (or `Ctrl + Alt + M`) to switch to **Hand Tracking Mode (🖐️)**.
+
+Berdasarkan inspirasi dari [syahdanfx/Retrolens](https://github.com/syahdanfx/Retrolens) dan [GedeAnanda/python-handtrack](https://github.com/GedeAnanda/python-handtrack), mode ini membuka **portal kamera interaktif** langsung di antara tangan Anda:
+
+```text
+Tangan Kiri                                     Tangan Kanan
+     🖐️                                              🖐️
+      ●══════════════════════════════════════════════●
+      ║  AREA DI DALAM PORTAL TERKENA FILTER VFX     ║
+      ●══════════════════════════════════════════════●
+```
+
+Bentangkan kedua tangan untuk membuka portal. Area di dalam poligon portal akan langsung tertransformasi dengan efek visual retro, lengkap dengan garis batas bercahaya (*glowing portal border*) dan percikan partikel neon (*particle glow sparks*)!
+
+### Daftar Efek Portal VFX (15 Filter Lengkap):
+
+| Filter | Efek Visual |
+|---|---|
+| **DUAL-TONE** | Efek duo-nada futuristik oranye neon & pink cyber |
+| **THERMAL** | Sensor inframerah panas (*Predator Heat Vision / ColorMap JET*) |
+| **SKETCH** | Gambar sketsa pensil artistik hitam-putih |
+| **GLITCH** | Efek pergeseran kromatik RGB dengan garis *glitch noise* acak |
+| **NEON** | Deteksi garis tepi bercahaya neon cyan terang (*edge glow*) |
+| **PIXELATE** | Efek sensor retro 8-bit pixelation blocks |
+| **GALAXY** | Nebula kosmik ungu-biru bercahaya bintang (*procedural galaxy*) |
+| **CARTOON** | Kartun komik dengan tinta kontur hitam tebal |
+| **RAINBOW-WAVE** | Gelombang warna pelangi animasi psikedelik |
+| **BLUR** | Efek frosted glass blur Gaussian |
+| **INVERT** | Negatif warna (*color negative invert*) |
+| **SEPIA** | Nuansa foto vintage klasik bernuansa cokelat hangat |
+| **RED-CHANNEL** | Isolasi saluran merah murni dengan siluet noir |
+| **EDGE** | Deteksi tepi kontur berwarna musim panas (*Summer ColorMap*) |
+| **MONO** | Monokrom hitam-putih sinematik elegan |
+
+### Kontrol Gestur Tangan & Tombol:
+
+* **🖐️ Bentangkan 2 Tangan:** Membuka jendela portal poligon di antara jari jempol dan telunjuk.
+* **👌 Pinch Jempol & Kelingking:** Cubit jari jempol dan kelingking pada salah satu tangan untuk **ganti filter seketika**!
+* **👆 Sentuhkan 2 Ujung Telunjuk:** Tempelkan kedua jari telunjuk untuk berganti filter.
+* **✊✊ 2 Tinju Dikepal:** Kepal kedua tangan untuk beralih antara mode **2D Quad** dan **3D Dual-Mesh**!
+* **🌐 3D Dual-Mesh Mode:** Membagi portal menjadi 2 portal simultan (Portal A untuk jari atas, Portal B untuk jari bawah) dengan 2 filter berbeda sekaligus!
+* **🖐️ 1 Tangan (Mini Lens):** Saat hanya 1 tangan terlihat, portal mini terbuka di antara jari jempol, telunjuk, tengah, dan kelingking.
+* **Tombol `n` / `p`:** Filter berikutnya (*next*) / sebelumnya (*previous*).
+* **Tombol `c`:** Beralih antara mode portal 2D Single Quad dan 3D Dual-Mesh.
+* **Tombol `r`:** Reset portal.
+* **Tombol `m`:** Siklus mode (`🎭 Meme` ➔ `🕸️ Hand FX` ➔ `🖐️ Hand Tracking`).
 
 ---
 ## Making it yours
