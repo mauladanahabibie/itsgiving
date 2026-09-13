@@ -538,30 +538,30 @@ class HandFXRenderer:
 
         # Check individual hand gestures
         for h in hands:
-            if getattr(h, "is_spiderman", False):
+            if getattr(h, "is_peace", False):
+                self.draw_peace_sparkles(frame, h, fw)
+                primary = primary or "peace"
+            elif getattr(h, "is_spiderman", False):
                 self.draw_spiderman(frame, h, fw)
                 primary = "spiderman"
-            elif getattr(h, "is_fist", False):
-                self.draw_wolverine_claws(frame, h, fw)
-                primary = primary or "wolverine"
-            elif getattr(h, "is_six", False):
-                self.draw_shaka_six(frame, h, fw)
-                primary = primary or "shaka_six"
-            elif getattr(h, "is_thumbs_up", False):
-                self.draw_thumbs_up(frame, h, fw)
-                primary = primary or "thumbs_up"
+            elif getattr(h, "is_gun", False):
+                self.draw_finger_gun(frame, h, fw)
+                primary = primary or "finger_gun"
             elif getattr(h, "is_rock_on", False):
                 self.draw_rock_on_fire(frame, h, fw)
                 primary = primary or "rock_on"
             elif getattr(h, "is_pointing", False):
                 self.draw_doctor_strange(frame, h, fw)
                 primary = primary or "doctor_strange"
-            elif getattr(h, "is_gun", False):
-                self.draw_finger_gun(frame, h, fw)
-                primary = primary or "finger_gun"
-            elif getattr(h, "is_peace", False):
-                self.draw_peace_sparkles(frame, h, fw)
-                primary = primary or "peace"
+            elif getattr(h, "is_six", False):
+                self.draw_shaka_six(frame, h, fw)
+                primary = primary or "shaka_six"
+            elif getattr(h, "is_thumbs_up", False):
+                self.draw_thumbs_up(frame, h, fw)
+                primary = primary or "thumbs_up"
+            elif getattr(h, "is_fist", False):
+                self.draw_wolverine_claws(frame, h, fw)
+                primary = primary or "wolverine"
             elif getattr(h, "is_repulsor", False):
                 self.draw_repulsor(frame, h, fw)
                 primary = primary or "repulsor"

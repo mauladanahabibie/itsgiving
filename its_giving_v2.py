@@ -471,23 +471,30 @@ class Hand:
         d = p[9] - p[0]
         self.horizontal = abs(d[0]) > 1.5 * abs(d[1])
         self.vertical = abs(d[1]) > 1.5 * abs(d[0])
-        self.thumb_ext = dist(p[0], p[4]) > 1.15 * dist(p[0], p[2])
-        self.index_ext = dist(p[0], p[8]) > 1.15 * dist(p[0], p[6])
-        self.middle_ext = dist(p[0], p[12]) > 1.15 * dist(p[0], p[10])
-        self.ring_ext = dist(p[0], p[16]) > 1.15 * dist(p[0], p[14])
-        self.pinky_ext = dist(p[0], p[20]) > 1.15 * dist(p[0], p[18])
+        self.thumb_ext = (dist(p[1], p[4]) > 1.20 * dist(p[1], p[2])) and (dist(p[0], p[4]) > 1.10 * dist(p[0], p[2]))
+        self.index_ext = (dist(p[5], p[8]) > 1.25 * dist(p[5], p[6])) and (dist(p[0], p[8]) > 1.05 * dist(p[0], p[6]))
+        self.middle_ext = (dist(p[9], p[12]) > 1.25 * dist(p[9], p[10])) and (dist(p[0], p[12]) > 1.05 * dist(p[0], p[10]))
+        self.ring_ext = (dist(p[13], p[16]) > 1.25 * dist(p[13], p[14])) and (dist(p[0], p[16]) > 1.05 * dist(p[0], p[14]))
+        self.pinky_ext = (dist(p[17], p[20]) > 1.25 * dist(p[17], p[18])) and (dist(p[0], p[20]) > 1.05 * dist(p[0], p[18]))
         ext_count = sum([self.index_ext, self.middle_ext, self.ring_ext, self.pinky_ext])
         self.open = ext_count >= 3
+
+        index_mid_len = (dist(p[5], p[8]) + dist(p[9], p[12])) / 2.0
+        ring_pinky_len = (dist(p[13], p[16]) + dist(p[17], p[20])) / 2.0
+
+        self.is_peace = bool(self.index_ext and self.middle_ext and 
+                             (index_mid_len > 1.35 * ring_pinky_len) and
+                             not (self.ring_ext and self.pinky_ext))
         self.is_thumbs_up = bool(self.thumb_ext and ext_count == 0 and p[4][1] < p[2][1] and p[4][1] < p[5][1])
         self.is_fist = bool(ext_count == 0 and not self.is_thumbs_up)
         self.is_pointing = bool(self.index_ext and not self.thumb_ext and ext_count == 1)
-        self.is_peace = bool(self.index_ext and self.middle_ext and not self.ring_ext and not self.pinky_ext)
         self.is_gun = bool(self.index_ext and self.thumb_ext and not self.middle_ext and not self.ring_ext and not self.pinky_ext)
         horns = bool(self.index_ext and self.pinky_ext and not self.middle_ext and not self.ring_ext)
         self.is_spiderman = bool(horns and self.thumb_ext)
         self.is_rock_on = bool(horns and not self.thumb_ext)
         self.is_six = bool(self.thumb_ext and self.pinky_ext and not self.index_ext and not self.middle_ext and not self.ring_ext)
-        self.is_repulsor = bool(self.open and not self.is_spiderman and not self.is_rock_on and not self.is_peace and not self.is_six)
+        self.is_repulsor = bool(self.open and self.ring_ext and self.pinky_ext and 
+                                not self.is_spiderman and not self.is_rock_on and not self.is_peace and not self.is_six)
 
 
 class Body:
