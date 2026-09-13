@@ -15,12 +15,13 @@ Point Zoom at its virtual camera and the whole call sees it.
 
 ```bash
 python its_giving.py              # preview + virtual camera
+python its_giving.py --hide       # background mode (preview hidden, full 30 FPS)
 python its_giving.py --no-vcam    # preview only
 ```
 
-Fourteen reactions: time out, heart hands, hands over face, crashing out,
-dancing, nose pinch, flirty, hand up, tongue out, gasp, disgust, talking to the
-wall, side-eye, and spinning.
+Fifteen reactions: time out, heart hands, hands over face, crashing out,
+dancing, nose pinch, flirty, tongue out, gasp, disgust, talking to the
+wall, side-eye, spinning, prayer, and Speed rizz (pucker).
 
 There's a second file, `its_giving_v2.py`, which is the same thing with the
 expression thresholds calibrated to *your* face instead of to a number I
@@ -52,46 +53,75 @@ nothing in the code cares. Unpin one and you have to unpin all three.
 
 ```bash
 python its_giving_v2.py --calibrate   # once, seven seconds
-python its_giving_v2.py
+python its_giving_v2.py               # preview + virtual camera
+python its_giving_v2.py --hide        # start hidden in background (full 30 FPS)
 ```
 
 | key | does |
 |---|---|
 | `q` | quit |
 | `d` | toggle the HUD |
+| `h` | toggle hide / show preview window |
 | `c` | recalibrate |
-| `1`–`9` `0` `-` `=` `[` `]` | force a reaction on screen for 2 seconds |
+| `1`–`9` `0` `-` `=` `[` `p` `s` | force a reaction on screen for 2 seconds |
+
+> **Note (Windows 30 FPS Performance):** Minimizing an OpenCV window on Windows can cause the OS to throttle webcam capture down to 10 FPS. When minimized, the app automatically hides the preview window to bypass OS throttling and maintain a solid 30 FPS virtual camera stream in Zoom/Meet. Press `h` at any time to toggle the preview window back on.
 
 ---
 
-## Using it in meetings
+## Using it in meetings & OBS
 
-The virtual camera is on by default, and Zoom, Meet, Teams, Discord and OBS all
-treat it as a normal webcam.
+The virtual camera stream is published directly by the script using `pyvirtualcam`.
 
-**1. Install a backend** (once):
+### 1. Prerequisites (Install Driver Once)
 
-| OS | do this |
+| OS | Do this |
 |---|---|
-| macOS | install [OBS Studio](https://obsproject.com), open it once, quit it |
-| Windows | install OBS Studio, or run its virtual-camera installer |
+| Windows | Install [OBS Studio](https://obsproject.com) (this installs the `OBS Virtual Camera` driver in Windows) |
+| macOS | Install [OBS Studio](https://obsproject.com), open it once, then quit it |
 | Linux | `sudo apt install v4l2loopback-dkms` then `sudo modprobe v4l2loopback` |
 
-**2. Run it.** It prints the device it's publishing to:
+---
 
-```
-Virtual camera: 'OBS Virtual Camera'  <- pick this camera in Zoom / Meet
-```
+### Scenario A: Direct to Zoom, Meet, Teams, or Discord (Recommended)
 
-**3. Pick that device** in your meeting app — Zoom: Settings → Video → Camera.
-Meet, Teams and Discord all have the same setting under Video.
+> **Important:** You do **NOT** need to open the OBS Studio application! OBS only needs to be installed on your computer so its virtual camera driver is registered in Windows.
 
-**Start this before your meeting app.** Most of them scan for cameras once at
-launch and won't notice a device that appeared later.
+1. Ensure the OBS Studio application is **closed**.
+2. Run the script:
+   ```bash
+   python its_giving_v2.py
+   ```
+   It will print:
+   ```
+   Virtual camera: 'OBS Virtual Camera'  <- pick this camera in Zoom / Meet
+   ```
+3. Open your meeting app (Zoom, Google Meet, Microsoft Teams, or Discord).
+4. Go to **Settings → Video → Camera** and select **`OBS Virtual Camera`**.
+5. Your webcam feed with live reactions will now appear directly in your call!
 
-A few things worth knowing before you turn it on in front of colleagues. It
-fires on its own. Everyone sees whatever it decides, so try it on a call with
-someone who likes you first. 
+> **Warning (Device Conflict):** Do **NOT** click "Start Virtual Camera" inside the OBS Studio app while the script is running. The Windows virtual camera device only allows **one** application to send video to it at a time. If the script is already broadcasting to `OBS Virtual Camera`, starting it in OBS Studio will fail or crash the camera driver.
+
+---
+
+### Scenario B: Mixing Scenes inside OBS Studio (Streaming / Recording)
+
+If you want to use OBS Studio to manage your stream (e.g. adding overlays, microphones, alerts, or broadcasting to Twitch/YouTube):
+
+1. Run the script with the `--no-vcam` flag (so it doesn't occupy the virtual camera driver):
+   ```bash
+   python its_giving_v2.py --no-vcam
+   ```
+2. Open **OBS Studio**.
+3. In the **Sources** panel, click **+** and add **Window Capture**.
+4. Select the window: `it's giving v2` (or `Reaction Cam`).
+5. *(Optional)* You can now safely click **Start Virtual Camera** inside OBS Studio if you want to output your entire mixed OBS scene to Zoom/Meet without any device conflicts!
+
+---
+
+**A few tips:**
+- **Start the script before opening Zoom/Meet:** Most meeting apps scan for available camera devices only once at startup.
+- **Preview Hidden Mode:** Run with `--hide` or press `h` in the window to keep the virtual camera running at 30 FPS in the background.
 
 ---
 
@@ -106,13 +136,14 @@ someone who likes you first.
 | `dance` | both hands up behind your head, mouth closed |
 | `nose_closed` | pinch your nose shut |
 | `flirty` | one index fingertip on your lips |
-| `hand_up` | one open palm up beside your head |
 | `tongue_out` | tongue out, mouth open |
 | `open_mouth` | jaw drops |
 | `disgusted` | scrunch your nose, or brows down and frown |
 | `talking_to_wall` | hands in frame, gesturing away |
 | `suspicious` | turn your head and squint |
 | `spin` | leave the frame entirely |
+| `pray` | hands clasped together in prayer in front of chest / chin |
+| `speed` | pucker / pout lips facing camera (IShowSpeed rizz) |
 
 Assets live in `assets/`, named after the pose — `heart.jpeg`, `spin.gif`.
 Swap in your own by dropping a file with the right name; JPEG, PNG and animated

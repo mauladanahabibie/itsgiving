@@ -9,7 +9,7 @@ Seven seconds of calibration; see README.md.
   python its_giving_v2.py --calibrate
   python its_giving_v2.py [--camera 1] [--no-vcam] [--size 640x480] [--no-flip]
 
-Keys:  q quit   d toggle HUD   c recalibrate   1-9 0 - = [ ] force-show a pose
+Keys:  q quit   d toggle HUD   c recalibrate   1-9 0 - = [ p s force-show a pose
 """
 import argparse
 import json
@@ -26,35 +26,37 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision
 
-POSES = ["time_out", "heart", "cover_nose", "crashing_out", "dance", "nose_closed", "flirty", "hand_up",
-         "tongue_out", "open_mouth", "disgusted", "talking_to_wall", "suspicious", "spin"]
-TEST_KEYS = "1234567890-=[]"
+POSES = ["time_out", "heart", "cover_nose", "crashing_out", "dance", "nose_closed", "flirty",
+         "tongue_out", "open_mouth", "disgusted", "talking_to_wall", "suspicious", "spin", "pray", "speed"]
+TEST_KEYS = "1234567890-=[ps"
 
 FACE_SCALE = 2.0
 HOLD_FRAMES = 10
 ARM = {
     "spin": 15, "suspicious": 8, "talking_to_wall": 6, "dance": 6, "crashing_out": 4,
-    "open_mouth": 4, "tongue_out": 5, "disgusted": 5,
+    "open_mouth": 6, "tongue_out": 3, "disgusted": 5, "pray": 3, "speed": 6,
 }
 
 Z = dict(
     jaw_open=6.0,
     scream_jaw=3.5,
-    tongue_jaw=3.5,
+    tongue_jaw=2.0,
     sneer=4.5,
     disgust=14.0,
     squint=4.0,
+    pucker=6.5,
 )
 Z_CAP = 8.0
 FLOOR = dict(
     jaw_open=0.30,
     scream_jaw=0.18,
-    tongue_jaw=0.18,
+    tongue_jaw=0.12,
     sneer=0.06,
     squint=0.18,
+    pucker=0.55,
 )
 T = dict(
-    tongue=0.5,
+    tongue=0.25,
     head_turn=0.15,
     gesture=0.035,
 )
@@ -72,7 +74,7 @@ GENERIC_MEAN = {
     "jawOpen": 0.08, "eyeSquintLeft": 0.10, "eyeSquintRight": 0.10,
     "eyeBlinkLeft": 0.10, "eyeBlinkRight": 0.10, "noseSneerLeft": 0.03, "noseSneerRight": 0.03,
     "browDownLeft": 0.06, "browDownRight": 0.06, "mouthFrownLeft": 0.05, "mouthFrownRight": 0.05,
-    "mouthUpperUpLeft": 0.05, "mouthUpperUpRight": 0.05,
+    "mouthUpperUpLeft": 0.05, "mouthUpperUpRight": 0.05, "mouthPucker": 0.05,
 }
 
 INNER_LIPS = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191]
@@ -148,6 +150,59 @@ class Clock:
     def next(self):
         self.last = max(int((time.monotonic() - self.t0) * 1000), self.last + 1)
         return self.last
+
+
+class WindowController:
+    """Track window minimize and visibility state, auto-hiding window when minimized to bypass Windows OS 10 FPS camera throttling."""
+
+    def __init__(self, window_name, initial_hide=False):
+        self.name = window_name
+        self.hwnd = None
+        self.hidden = initial_hide
+        self.created = False
+
+    def update(self):
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                if not self.hwnd:
+                    self.hwnd = ctypes.windll.user32.FindWindowW(None, self.name)
+                if self.hwnd and not self.hidden:
+                    if ctypes.windll.user32.IsIconic(self.hwnd):
+                        ctypes.windll.user32.ShowWindow(self.hwnd, 0)  # SW_HIDE
+                        self.hidden = True
+                        print("\n[Notice] Preview window hidden to maintain full 30 FPS virtual camera stream. Press 'h' to restore.")
+            except Exception:
+                pass
+
+    def show(self):
+        if sys.platform == "win32" and self.hwnd:
+            try:
+                import ctypes
+                ctypes.windll.user32.ShowWindow(self.hwnd, 9)  # SW_RESTORE
+                self.hidden = False
+            except Exception:
+                pass
+        else:
+            self.hidden = False
+
+    def hide(self):
+        if sys.platform == "win32" and self.hwnd:
+            try:
+                import ctypes
+                ctypes.windll.user32.ShowWindow(self.hwnd, 0)  # SW_HIDE
+                self.hidden = True
+            except Exception:
+                pass
+        else:
+            self.hidden = True
+
+    def toggle(self):
+        if self.hidden:
+            self.show()
+        else:
+            self.hide()
+
 
 
 class Baseline:
@@ -426,6 +481,8 @@ class Body:
         self.seen = min(vis) > 0.5
         shoulder_y = float(self.shoulders[:, 1].mean())
         self.elbows_up = self.seen and bool((self.elbows[:, 1] < shoulder_y).all())
+        wvis = [getattr(lms[i], "visibility", 1.0) for i in (15, 16)]
+        self.wrists_seen = min(wvis) > 0.35
 
 
 def tongue_score(frame, face, hands, jaw_ready):
@@ -445,13 +502,13 @@ def tongue_score(frame, face, hands, jaw_ready):
         return 0.0
     mask = np.zeros(roi.shape[:2], np.uint8)
     cv2.fillPoly(mask, [poly - [x0, y0]], 255)
-    k = max(3, int(0.15 * (y1 - y0)))
+    k = max(2, int(0.10 * (y1 - y0)))
     mask = cv2.erode(mask, np.ones((k, k), np.uint8))
     n = int(np.count_nonzero(mask))
-    if n < 40:
+    if n < 20:
         return 0.0
     h, s, v = cv2.split(cv2.cvtColor(roi, cv2.COLOR_BGR2HSV))
-    pink = ((h < 12) | (h > 160)) & (s > 70) & (v > 110)
+    pink = ((h < 15) | (h > 155)) & (s > 50) & (v > 80)
     return float(np.count_nonzero(pink & (mask > 0)) / n)
 
 
@@ -487,6 +544,7 @@ def measure(face, base):
         "squint": max(pair("eyeSquint"), pair("eyeBlink")),
         "z_squint": max(zpair("eyeSquint"), zpair("eyeBlink")),
         "turn": abs(face.turn_signed - base.neutral_turn),
+        "pucker": face.b("mouthPucker"), "z_pucker": base.z("mouthPucker", face.b("mouthPucker")),
     }
     cap = lambda v: min(v, Z_CAP)
     m["z_disgust"] = 2 * cap(m["z_sneer"]) + cap(m["z_brow"]) + cap(m["z_frown"]) + cap(m["z_lip"])
@@ -511,6 +569,12 @@ def decide(face, hands, body, tongue, gesture, m):
     d.update(m, gesture=gesture, tongue=tongue, elbows_up=elbows_up)
     screaming = over("scream_jaw", m, "z_jaw", "jaw")
 
+    wrists_together = bool(body and getattr(body, "wrists_seen", body.seen)
+                           and dist(body.wrists[0], body.wrists[1]) < 0.95 * fw
+                           and body.wrists[0][1] > face.chin[1] - 0.3 * fw
+                           and body.wrists[0][1] < face.chin[1] + 2.2 * fw
+                           and abs((body.wrists[0][0] + body.wrists[1][0]) / 2 - face.nose[0]) < 1.2 * fw)
+
     if len(hands) >= 2:
         a, b = hands[0], hands[1]
         for top, under in ((a, b), (b, a)):
@@ -520,12 +584,26 @@ def decide(face, hands, body, tongue, gesture, m):
         if near(a.index, b.index, 0.3) and near(a.thumb, b.thumb, 0.3) \
                 and (a.index[1] + b.index[1]) < (a.thumb[1] + b.thumb[1]):
             return "heart", d
+        palms_close = near(a.palm, b.palm, 0.95)
+        fingers_up = a.middle[1] < a.palm[1] + 0.35 * fw and b.middle[1] < b.palm[1] + 0.35 * fw
+        in_chest = (a.palm[1] > face.eye_y and b.palm[1] > face.eye_y
+                    and abs((a.palm[0] + b.palm[0]) / 2 - face.nose[0]) < 1.3 * fw)
+        if (palms_close or wrists_together) and fingers_up and in_chest:
+            return "pray", d
         if near(a.palm, face.mouth, 0.6) and near(b.palm, face.mouth, 0.6):
             return "cover_nose", d
         on_head = lambda h: (h.palm[1] < face.eye_y and abs(h.palm[0] - face.nose[0]) < 1.1 * fw
                              and h.palm[1] > face.top[1] - 0.8 * face.h)
         if on_head(a) and on_head(b) and screaming:
             return "crashing_out", d
+
+    if wrists_together:
+        if not hands:
+            return "pray", d
+        if len(hands) == 1:
+            h = hands[0]
+            if h.palm[1] > face.eye_y and h.middle[1] < h.palm[1] + 0.35 * fw and abs(h.palm[0] - face.nose[0]) < 1.3 * fw:
+                return "pray", d
 
     near_head = lambda h: abs(h.palm[0] - face.nose[0]) < 1.3 * fw and h.palm[1] < face.eye_y + 0.3 * face.h
     if elbows_up and all(near_head(h) for h in hands):
@@ -536,13 +614,13 @@ def decide(face, hands, body, tongue, gesture, m):
             return "nose_closed", d
         if near(h.index, face.mouth, 0.22) and not near(h.palm, face.mouth, 0.3):
             return "flirty", d
-        if h.open and h.palm[1] < face.nose[1] and abs(h.palm[0] - face.nose[0]) > 0.8 * fw:
-            return "hand_up", d
 
     if tongue > T["tongue"]:
         return "tongue_out", d
     if over("jaw_open", m, "z_jaw", "jaw"):
         return "open_mouth", d
+    if over("pucker", m, "z_pucker", "pucker") and (m["squint"] >= 0.22 or m["z_squint"] >= 2.0) and m["jaw"] < 0.22:
+        return "speed", d
     if over("sneer", m, "z_sneer", "sneer") or m["z_disgust"] >= Z["disgust"]:
         return "disgusted", d
     if hands and gesture > T["gesture"]:
@@ -567,14 +645,15 @@ def draw_hud(img, shown, raw, d, face, hands, body, base):
          f"   elbows up: {'Y' if g('elbows_up') else 'n'}", (0, 255, 0)),
         (f"jaw {g('jaw', 0):.2f} = {g('z_jaw', 0):+.1f}s/{Z['jaw_open']:.0f}   "
          f"squint {g('squint', 0):.2f} = {g('z_squint', 0):+.1f}s/{Z['squint']:.0f}   "
-         f"tongue {g('tongue', 0):.2f}   turn {g('turn', 0):.2f}   gesture {g('gesture', 0):.3f}", (0, 255, 0)),
+         f"pucker {g('pucker', 0):.2f} = {g('z_pucker', 0):+.1f}s/{Z['pucker']:.0f}   "
+         f"tongue {g('tongue', 0):.2f}   turn {g('turn', 0):.2f}", (0, 255, 0)),
         (f"disgust {g('z_disgust', 0):+.1f}s/{Z['disgust']:.0f} = 2x sneer {g('z_sneer', 0):+.1f} "
          f"+ brow {g('z_brow', 0):+.1f} + frown {g('z_frown', 0):+.1f} + lip {g('z_lip', 0):+.1f}", (0, 255, 0)),
         (("NOT CALIBRATED - generic baseline, everything is harder to trigger. press 'c'"
           if base.generic else
           f"calibrated {base.made} on {base.samples} frames   (s = sigma above your neutral)"),
          (0, 140, 255) if base.generic else (200, 200, 200)),
-        ("keys: q quit  d hud  c recalibrate  1-9 0 - = [ ] test poses", (0, 255, 0)),
+        ("keys: q quit  d hud  h hide/show  c recalibrate  1-9 0 - = [ p s test poses", (0, 255, 0)),
     ]
     for i, (t, colour) in enumerate(lines):
         y = 24 + 22 * i
@@ -591,6 +670,7 @@ def main():
     ap.add_argument("--skip-check", action="store_true", help="skip the MediaPipe startup check")
     ap.add_argument("--size", default="1280x720", help="capture size, e.g. 1280x720 or 640x480 (lower = faster)")
     ap.add_argument("--no-flip", action="store_true", help="don't mirror the image")
+    ap.add_argument("--hide", action="store_true", help="start with preview window hidden for background operation")
     args = ap.parse_args()
 
     calib_path = os.path.join(HERE, CALIB_FILE)
@@ -622,7 +702,16 @@ def main():
     print(f"Camera {args.camera}: {W}x{H}")
 
     clock = Clock()
-    window = "it's giving v2  (q quit, d HUD, c recalibrate, 1-9 0 - = [ ] test)"
+    window = "it's giving v2  (q quit, d HUD, h hide/show, c recalibrate, 1-9 0 - = [ p s test)"
+    cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+    win_ctrl = WindowController(window, initial_hide=args.hide)
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.winmm.timeBeginPeriod(1)
+        except Exception:
+            pass
 
     if args.calibrate:
         face_det = vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(
@@ -659,7 +748,7 @@ def main():
     shown_since = 0.0
     forced, forced_until = None, 0.0
     sm_center, sm_h = np.array([W / 2, H / 2], np.float32), H * 0.45
-    print("Running. Focus the preview window: q quit, d HUD, c recalibrate, 1-9 0 - = [ ] test a pose")
+    print("Running. Focus the preview window: q quit, d HUD, c recalibrate, 1-9 0 - = [ p s test a pose")
 
     try:
         while True:
@@ -717,20 +806,26 @@ def main():
                 sh, sw = sprite.shape[:2]
                 overlay(frame, sprite, int(sm_center[0] - sw / 2), int(sm_center[1] - sh / 2 - 0.05 * sh))
 
+            win_ctrl.update()
+
             if vcam:
                 vcam.send(frame)
                 vcam.sleep_until_next_frame()
 
-            preview = frame
-            if show_hud:
-                preview = frame.copy()
-                draw_hud(preview, shown, raw, dbg, face, hands, body, base)
-            cv2.imshow(window, preview)
-            key = cv2.waitKey(1) & 0xFF
+            if not win_ctrl.hidden:
+                win_ctrl.created = True
+                preview = frame
+                if show_hud:
+                    preview = frame.copy()
+                    draw_hud(preview, shown, raw, dbg, face, hands, body, base)
+                cv2.imshow(window, preview)
+            key = cv2.pollKey() & 0xFF if hasattr(cv2, "pollKey") else cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 break
             if key == ord("d"):
                 show_hud = not show_hud
+            elif key == ord("h"):
+                win_ctrl.toggle()
             elif key == ord("c"):
                 new = run_calibration(cap, face_det, clock, args, W, H, window)
                 if new is not None:
@@ -742,6 +837,12 @@ def main():
             elif 0 < key < 256 and chr(key) in TEST_KEYS:
                 forced, forced_until = POSES[TEST_KEYS.index(chr(key))], now + 2.0
     finally:
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                ctypes.windll.winmm.timeEndPeriod(1)
+            except Exception:
+                pass
         cap.release()
         face_det.close()
         hand_det.close()
