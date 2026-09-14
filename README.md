@@ -17,16 +17,20 @@ Point Zoom at its virtual camera and the whole call sees it.
 python its_giving.py                  # preview + virtual camera (Meme mode)
 python its_giving.py --mode hand      # start directly in Hand FX mode
 python its_giving.py --mode tracking  # start directly in Hand Tracking mode
+python its_giving.py --mode normal    # start directly in Normal Passthrough mode (clean feed)
+python its_giving.py --perf           # start with ⚡ Performance Monitor overlay enabled
 python its_giving.py --hide           # background mode (preview hidden, full 60 FPS)
 python its_giving.py --no-vcam        # preview only
 ```
 
-**3 Independent Modes:**
+**4 Independent Modes:**
 1. **Meme Mode (🎭):** 15 meme reaction face overlays following your head.
-2. **Hand FX Mode (🕸️):** Real-time superhero & visual effects on your hands (Spiderman `🤟`, Kamehameha `👐`, Spirit Bomb `🙌`, viral 67 Motion / Hand Sign `6️⃣7️⃣`, Wolverine Claws `✊`, Iron Man repulsor `✋`, Rock On fire `🤘`, Finger Gun `👉`, Doctor Strange Eldritch `☝️`, Peace sparkles `✌️`, Thumbs Up `👍`, and Shaka 6 `🤙`).
+2. **Hand FX Mode (🕸️):** Real-time superhero & visual effects on your hands with interactive action triggers (Spiderman `🤟` web projectile & screen splat, Kamehameha `👐` charging & colossal beam blast, Spirit Bomb `🙌` cosmic gathering & detonation shockwave, viral 67 Motion / Hand Sign `6️⃣7️⃣`, Wolverine Claws `✊`, Iron Man repulsor `✋`, Rock On fire `🤘`, Finger Gun `👉`, Doctor Strange Eldritch `☝️`, Peace sparkles `✌️`, Thumbs Up `👍`, and Shaka 6 `🤙`).
 3. **Hand Tracking Mode (🖐️):** Portal Filter interaktif ala RetroLens & Python-Handtrack! Buka portal dimensi di antara tangan/ujung jari Anda secara real-time. Area di dalam portal ditransformasikan dengan 15 filter retro/VFX (Dual-Tone, Thermal, Sketch, Glitch, Galaxy, Neon, Pixelate, Cartoon, Rainbow, Blur, dll.) lengkap dengan border neon bercahaya, partikel debu kosmik, dan pergantian filter tanpa sentuh lewat cubit jempol-kelingking atau sentuh telunjuk. Terdapat juga mode 3D Dual-Mesh portal ganda!
+4. **Normal Mode (📷):** Clean passthrough mode — raw webcam feed without any facial meme stickers, hand FX, or portal filters. Virtual camera and background processing still work seamlessly.
 
-Press **`m`** (or `Ctrl + Alt + M`) at any time to cycle between all 3 modes!
+Press **`m`** (or `Ctrl + Alt + M`) at any time to cycle between all 4 modes!
+Press **`o`** (or `Ctrl + Alt + O`) to toggle the ⚡ **Performance Monitor** overlay!
 
 There's a second file, `its_giving_v2.py`, which is the same thing with the
 expression thresholds calibrated to *your* face instead of to a number I
@@ -60,7 +64,10 @@ nothing in the code cares. Unpin one and you have to unpin all three.
 python its_giving_v2.py --calibrate          # once, seven seconds
 python its_giving_v2.py                      # auto-selects highest FPS supported (e.g. 60 FPS)
 python its_giving_v2.py --fps 30             # force 30 FPS (if you want lower CPU usage)
-python its_giving_v2.py --mode hand          # start in Hand FX mode (Spiderman, etc.)
+python its_giving_v2.py --mode hand          # start in Hand FX mode (Spiderman, Kamehameha, etc.)
+python its_giving_v2.py --mode tracking      # start in Hand Tracking mode (Portal Filters)
+python its_giving_v2.py --mode normal        # start in Normal mode (clean passthrough feed)
+python its_giving_v2.py --perf               # start with ⚡ Performance Monitor enabled
 python its_giving_v2.py --bg remove          # start with background removed (Chroma Green / Transparent)
 python its_giving_v2.py --bg blur            # start with blurred bokeh background
 python its_giving_v2.py --bg custom          # start with custom image background (assets/background.jpeg)
@@ -70,7 +77,8 @@ python its_giving_v2.py --hide --mode hand   # start directly in Hand FX backgro
 
 | key / shortcut | does |
 |---|---|
-| `m` (or **`Ctrl + Alt + M`**) | **cycle mode**: `Meme Reaction (🎭)` ➔ `Hand FX (🕸️)` ➔ `Hand Tracking (🖐️)` |
+| `m` (or **`Ctrl + Alt + M`**) | **cycle mode**: `Meme Reaction (🎭)` ➔ `Hand FX (🕸️)` ➔ `Hand Tracking (🖐️)` ➔ `Normal (📷)` |
+| `o` (or **`Ctrl + Alt + O`**) | **toggle ⚡ Performance Monitor overlay**: shows real-time `FPS`, `Latency (ms)`, `Face`, `Hands`, `Segmentation (ms)`, and `Render (ms)` |
 | `r` | **reset interactive filters** back to default screen positions (in Hand Tracking mode) |
 | `b` (or **`Ctrl + Alt + B`**) | **cycle background**: `Original` ➔ `Remove` (Chroma/Transparent) ➔ `Blur` ➔ `Custom Image` |
 | `f` (or **`Ctrl + Alt + F`**) | **toggle mirror/flip**: Mirrored (ON) ➔ Normal (OFF) |
@@ -78,8 +86,21 @@ python its_giving_v2.py --hide --mode hand   # start directly in Hand FX backgro
 | `h` (or **`Ctrl + Alt + H`**) | toggle hide / show preview window |
 | `q` | quit (in preview window or terminal) |
 | `d` | toggle the HUD |
-| `c` | recalibrate (v2) |
+| `c` | recalibrate (v2) / toggle 2D vs 3D Portal (Hand Tracking mode) |
+| `n` / `p` | next / previous portal filter (in Hand Tracking mode) |
 | `1`–`9` `0` `-` `=` `[` `p` `s` | force a reaction on screen for 2 seconds (in Meme mode) |
+
+---
+
+### ⚡ Performance Monitor
+
+Press **`o`** (or **`Ctrl + Alt + O`**) or run with `--perf` to toggle the sleek, glassmorphic HUD card in the top-right corner:
+* **FPS:** Real-time smoothed framerate (color-coded green ≥28, yellow ≥20, red <20).
+* **Latency:** End-to-end frame turnaround latency in milliseconds (capture ➔ inference ➔ background ➔ render ➔ vcam dispatch).
+* **Face:** Number of tracked faces (0 or 1).
+* **Hands:** Number of tracked hands (0, 1, or 2).
+* **Segmentation:** Time spent in the MediaPipe Selfie Segmenter neural net inference and background compositing (ms).
+* **Render:** Time spent in the active mode's graphics rendering pipeline (Hand FX, Hand Tracking Portal, or Meme Sprite blending) (ms).
 
 ---
 
@@ -100,13 +121,14 @@ Because background processing runs **before** Meme Mode and Hand FX, all overlay
 > **Controlling in Background Mode (`--hide`):**
 > When running with `--hide`, the preview window is not shown so normal OpenCV window clicks won't register. You have **3 easy ways** to switch mode or control the app:
 > 1. **Global Hotkeys (Anywhere):**
->    - Press **`Ctrl + Alt + M`** anywhere to switch between Meme Mode and Hand FX!
+>    - Press **`Ctrl + Alt + M`** anywhere to cycle modes (`Meme` ➔ `Hand FX` ➔ `Hand Tracking` ➔ `Normal`)!
+>    - Press **`Ctrl + Alt + O`** anywhere to toggle the Performance Monitor!
 >    - Press **`Ctrl + Alt + B`** anywhere to cycle backgrounds (`Original` ➔ `Remove` ➔ `Blur` ➔ `Custom`)!
 >    - Press **`Ctrl + Alt + F`** anywhere to toggle webcam mirror (ON / OFF)!
 >    - Press **`Ctrl + Alt + T`** anywhere to toggle Discord Self-View Mode (ON / OFF)!
 >    - Press **`Ctrl + Alt + H`** to unhide/restore the window.
-> 2. **Terminal Console:** Click into the terminal window running Python and press **`m`** (mode), **`b`** (background), **`f`** (mirror), **`t`** (discord mode), **`h`** (show/hide), or **`q`** (quit).
-> 3. **Command Line Flag:** Start directly in your desired mode, e.g. `python its_giving_v2.py --bg remove --mode hand --discord`.
+> 2. **Terminal Console:** Click into the terminal window running Python and press **`m`** (mode), **`o`** (perf), **`b`** (background), **`f`** (mirror), **`t`** (discord mode), **`h`** (show/hide), or **`q`** (quit).
+> 3. **Command Line Flag:** Start directly in your desired mode, e.g. `python its_giving_v2.py --bg remove --mode hand --perf --discord`.
 >
 > > **Note (Windows 30 FPS Performance):** Minimizing an OpenCV window on Windows can cause the OS to throttle webcam capture down to 10 FPS. When minimized or hidden via `--hide`, the app bypasses OS window rendering and maintains a rock-solid 30 FPS virtual camera stream in Zoom/Meet. Press `h` or `Ctrl + Alt + H` at any time to restore the preview window.
 
@@ -220,13 +242,13 @@ from the file. A missing asset gets you a red placeholder, not a crash.
 
 ## Hand FX Mode (Superhero & Action Gestures)
 
-Press **`m`** to switch between **Meme Mode** and **Hand FX Mode** in real-time. In Hand FX mode, facial memes are suppressed and dynamic superhero effects render directly over your hands:
+Press **`m`** to cycle between **Meme Mode**, **Hand FX Mode**, **Hand Tracking Mode**, and **Normal Mode**. In Hand FX mode, facial memes are suppressed and dynamic superhero effects render directly over your hands and onto your webcam screen:
 
-| gesture | hand pose | visual effect |
+| gesture | hand pose | visual effect & dynamic trigger |
 |---|---|---|
-| **Spiderman Web** | `🤟` (Thumb, index, & pinky out; middle & ring folded) | Shoots a procedural web net with radial threads, concentric webbing rings, and a comic **"THWIP!"** badge |
-| **Kamehameha / Energy Ball** | `👐` (Both palms open facing each other close together) | Pulsing cyan/white plasma orb with animated electric lightning bolts arcing between palms and a **"KAMEHAMEHA!"** badge |
-| **Spirit Bomb / Genkidama** | `🙌` (Both hands open raised high above head & spread) | Massive cosmic blue celestial energy sphere hovering overhead with inflowing universe stardust and a **"GENKIDAMA!"** badge |
+| **Spiderman Web Shot & Lens Splat** | `🤟` (Thumb, index, & pinky out; middle & ring folded) | **Dynamic Action:** Transitioning from fist `✊` into Spiderman `🤟` fires a high-speed web projectile forward. Upon reaching the camera, a sticky spiderweb net splats directly against the webcam lens (`WebSplat`) with procedural radial anchor threads, sagging web rings, glue droplets, and dripping silk strands that linger for ~3 seconds before smoothly fading! |
+| **Kamehameha Blast & Bloom** | `👐` (Both palms open facing each other close together) | **Dynamic Action:** Cupping palms together charges an electric cyan-blue plasma orb (`CHARGING... ⚡`) with surging crackling lightning arcs. When fully charged or pushed toward the camera, it detonates a colossal blue-white energy beam (`KAMEHAMEHA BLAST! 🔥`) shooting straight across the screen with radiant energy bloom, plasma core, and screen flash shockwave! |
+| **Spirit Bomb / Genkidama Impact** | `🙌` (Both hands open raised high above head & spread) | **Dynamic Action:** Raising hands high summons universal stardust streaks inward from all four screen corners into an immense glowing celestial sphere (`GATHERING SPIRIT BOMB... 🌌`). Lowering / thrusting hands downward hurls the Spirit Bomb into the screen, triggering a blinding cosmic starburst explosion and shockwave impact ripples (`SPIRIT BOMB IMPACT! 💥`)! |
 | **67 Hand Motion / Sign** | `6️⃣7️⃣` (Both hands open moving alternately up & down in a see-saw motion, OR one hand 6 `🤙` and other hand 7 `👉`) | Animated see-saw balance scale beam with glowing holographic **"6"** and **"7"** hovering over hands and a **"SIX SEVEN (6 7)!"** comic badge |
 | **Wolverine Claws** | `✊` (Clenched fist) | Three sharp metallic adamantium blades extending from the knuckles with chrome sheen, sparks, and a comic **"SNIKT!"** badge |
 | **Iron Man Repulsor** | `✋` (Single palm flat and open towards camera) | High-tech glowing repulsor core with expanding shockwave energy pulse rings and a **"REPULSOR"** badge |

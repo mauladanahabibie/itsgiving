@@ -45,20 +45,139 @@ def draw_comic_badge(img, text, pos, bg_color=(0, 0, 220), text_color=(255, 255,
     cv2.putText(img, text, (x, y), cv2.FONT_HERSHEY_DUPLEX, scale, text_color, 2, cv2.LINE_AA)
 
 
+class WebSplat:
+    """A realistic spiderweb splat stuck to the webcam lens/screen."""
+    def __init__(self, cx, cy, max_radius=95, spawn_time=None):
+        self.cx = int(cx)
+        self.cy = int(cy)
+        self.max_radius = max_radius
+        self.created_at = spawn_time if spawn_time is not None else time.monotonic()
+        self.duration = 2.8  # stays on screen for 2.8 seconds
+        # Generate 10-12 radial angles with slight natural asymmetry
+        num_radials = random.randint(10, 13)
+        base_step = 2 * math.pi / num_radials
+        self.angles = [i * base_step + random.uniform(-0.06, 0.06) for i in range(num_radials)]
+        # Web droplets and drips (compact and clean)
+        self.droplets = [
+            (random.uniform(-18, 18), random.uniform(-18, 18), random.randint(2, 3))
+            for _ in range(5)
+        ]
+        # Drips running down
+        self.drips = [
+            (random.uniform(-18, 18), random.uniform(14, 36), random.uniform(1.0, 1.6))
+            for _ in range(3)
+        ]
+
+    def draw(self, frame, now):
+        elapsed = max(0.0, now - self.created_at)
+        if elapsed >= self.duration:
+            return False
+
+        H, W = frame.shape[:2]
+        # Alpha fade out after 1.6s
+        if elapsed < 1.6:
+            alpha = 1.0
+        else:
+            alpha = max(0.0, (self.duration - elapsed) / 1.2)
+
+        # Expanding animation on initial impact (0.16s)
+        expand_ratio = max(0.05, min(1.0, elapsed / 0.16))
+        radius = max(10.0, self.max_radius * (0.35 + 0.65 * expand_ratio))
+
+        overlay = frame.copy()
+
+        # Radial web strands
+        outer_pts = []
+        for a in self.angles:
+            ex = int(self.cx + math.cos(a) * radius)
+            ey = int(self.cy + math.sin(a) * radius)
+            outer_pts.append((ex, ey))
+            cv2.line(overlay, (self.cx, self.cy), (ex, ey), (255, 255, 255), 2, cv2.LINE_AA)
+
+        # Concentric sagging spiderweb polygons (rings)
+        for r_step in [0.25, 0.50, 0.75, 1.0]:
+            ring_pts = []
+            for a in self.angles:
+                px = int(self.cx + math.cos(a) * radius * r_step)
+                py = int(self.cy + math.sin(a) * radius * r_step)
+                ring_pts.append([px, py])
+            if len(ring_pts) > 2:
+                cv2.polylines(overlay, [np.array(ring_pts, np.int32)], True, (240, 240, 255), 2, cv2.LINE_AA)
+
+        # Dripping sticky strands extending downward
+        for dx, length, thick in self.drips:
+            drip_start_x = int(self.cx + dx)
+            drip_start_y = int(self.cy + radius * 0.4)
+            drip_len = max(0.0, min(length * expand_ratio, float(H - drip_start_y)))
+            drip_end_y = int(drip_start_y + drip_len)
+            cv2.line(overlay, (drip_start_x, drip_start_y), (drip_start_x, drip_end_y), (255, 255, 255), max(1, int(thick)), cv2.LINE_AA)
+            cv2.circle(overlay, (drip_start_x, drip_end_y), max(1, int(thick + 2)), (255, 255, 255), -1, cv2.LINE_AA)
+
+        # Adhesive gooey white splat core
+        cv2.circle(overlay, (self.cx, self.cy), max(1, int(10 * expand_ratio)), (255, 255, 255), -1, cv2.LINE_AA)
+        cv2.circle(overlay, (self.cx, self.cy), max(2, int(18 * expand_ratio)), (240, 240, 255), 2, cv2.LINE_AA)
+        for ddx, ddy, dr in self.droplets:
+            bx = int(self.cx + ddx * expand_ratio)
+            by = int(self.cy + ddy * expand_ratio)
+            cv2.circle(overlay, (bx, by), max(1, int(dr)), (255, 255, 255), -1, cv2.LINE_AA)
+
+        # Initial impact flash ring (first 0.20s)
+        if 0.0 < elapsed < 0.20:
+            flash_r = max(1, int(radius * (elapsed / 0.20) * 1.3))
+            cv2.circle(overlay, (self.cx, self.cy), flash_r, (255, 255, 255), 3, cv2.LINE_AA)
+
+        # Alpha composite overlay
+        final_alpha = 0.85 * alpha
+        cv2.addWeighted(overlay, final_alpha, frame, 1.0 - final_alpha, 0, frame)
+
+        # Action badge
+        if elapsed < 1.5:
+            badge_x = int(np.clip(self.cx - 65, 15, W - 150))
+            badge_y = int(np.clip(self.cy - radius - 10, 25, H - 20))
+            draw_comic_badge(frame, "THWIP! WEB SHOT!", (badge_x, badge_y), bg_color=(200, 20, 30), text_color=(255, 255, 255), scale=0.68)
+
+        return True
+
+
 class HandFXRenderer:
     def __init__(self):
         self.frame_count = 0
         self.start_time = time.monotonic()
+        self.last_time = time.monotonic()
+
+        # Dynamic trigger state tracking (Fist ✊ -> Spiderman 🤟)
+        self.spider_primed = True          # Primed on startup or when clenching a fist ✊
+        self.last_fist_time = 0.0          # Timestamp of last fist detection
+        self.last_web_shot_time = 0.0      # Timestamp of last web shot (cooldown)
+        self.web_splats = []
+
+        # Kamehameha state
+        self.kame_charge = 0.0
+        self.kame_blast_timer = 0.0
+        self.kame_blast_origin = None
+
+        # Spirit bomb state
+        self.genki_charge = 0.0
+        self.genki_impact_timer = 0.0
+        self.was_hands_high = False
+
+        # Screen flare & shockwave
+        self.screen_flash = 0.0
 
     def update(self):
         self.frame_count += 1
+        now = time.monotonic()
+        dt = max(0.001, min(0.1, now - self.last_time))
+        self.last_time = now
+        return dt
 
     def draw_spiderman(self, frame, hand, fw):
-        """Render Spiderman web shooter (🤟) with procedural web net and THWIP! badge."""
+        """Render Spiderman web shooter (🤟) with procedural web net, connector rope, and THWIP! badge."""
         H, W = frame.shape[:2]
         wrist = hand.wrist
-        direction = hand.middle - wrist
-        d_len = max(np.hypot(direction[0], direction[1]), 1.0)
+        aim_tip = (hand.index + hand.pinky) / 2.0
+        direction = aim_tip - wrist
+        d_len = max(float(np.hypot(direction[0], direction[1])), 1.0)
         ux, uy = direction[0] / d_len, direction[1] / d_len
         px, py = -uy, ux
 
@@ -89,8 +208,14 @@ class HandFXRenderer:
             if len(arc_pts) > 1:
                 cv2.polylines(overlay, [np.array(arc_pts, np.int32)], False, (240, 240, 255), 2, cv2.LINE_AA)
 
-        cv2.circle(overlay, (int(ox), int(oy)), int(fw * 0.25), (255, 255, 255), -1, cv2.LINE_AA)
-        cv2.circle(overlay, (int(ox), int(oy)), int(fw * 0.35), (0, 0, 255), 3, cv2.LINE_AA)
+        # Web connector cord connecting wrist directly to active web splat on screen
+        if self.web_splats:
+            latest = self.web_splats[-1]
+            cv2.line(overlay, (int(ox), int(oy)), (latest.cx, latest.cy), (255, 255, 255), 3, cv2.LINE_AA)
+            cv2.line(overlay, (int(ox), int(oy)), (latest.cx, latest.cy), (180, 220, 255), 1, cv2.LINE_AA)
+
+        cv2.circle(overlay, (int(ox), int(oy)), max(1, int(fw * 0.25)), (255, 255, 255), -1, cv2.LINE_AA)
+        cv2.circle(overlay, (int(ox), int(oy)), max(1, int(fw * 0.35)), (0, 0, 255), 3, cv2.LINE_AA)
 
         cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)
 
@@ -98,20 +223,93 @@ class HandFXRenderer:
         badge_y = int(np.clip(oy + py * fw * 0.9, 40, H - 30))
         draw_comic_badge(frame, "THWIP!", (badge_x, badge_y), bg_color=(30, 30, 220), text_color=(255, 255, 255), scale=0.9)
 
-    def draw_kamehameha(self, frame, hand_a, hand_b, fw):
-        """Render glowing plasma energy orb with lightning bolts between two open palms (👐)."""
+    def draw_kamehameha(self, frame, hand_a, hand_b, fw, dt):
+        """Render glowing plasma energy orb charging & massive beam blast (👐)."""
         H, W = frame.shape[:2]
         center = ((hand_a.palm + hand_b.palm) / 2)
         cx, cy = int(center[0]), int(center[1])
 
-        pulse = 1.0 + 0.12 * math.sin(self.frame_count * 0.4)
-        r = int(fw * 0.65 * pulse)
+        # If blast is firing:
+        if self.kame_blast_timer > 0.0:
+            self.kame_blast_timer = max(0.0, self.kame_blast_timer - dt)
+            if self.kame_blast_origin is None:
+                self.kame_blast_origin = (cx, cy)
+            else:
+                # Smoothly track moving hands during blast
+                bx = int(0.65 * self.kame_blast_origin[0] + 0.35 * cx)
+                by = int(0.65 * self.kame_blast_origin[1] + 0.35 * cy)
+                self.kame_blast_origin = (bx, by)
+            bx, by = self.kame_blast_origin
+
+            overlay = frame.copy()
+
+            # 1. Concentric shockwave blast rings expanding forward into the camera!
+            max_blast_r = max(W, H) * 0.85
+            for i in range(4):
+                wave_phase = (self.frame_count * 0.14 + i * 0.25) % 1.0
+                ring_r = max(1, int(fw * 0.4 + wave_phase * max_blast_r))
+                ring_alpha = max(0.0, 1.0 - wave_phase)
+                ring_col = (int(255 * ring_alpha), int(220 * ring_alpha), int(40 * ring_alpha))
+                cv2.circle(overlay, (bx, by), ring_r, ring_col, max(2, int(7 * (1.0 - wave_phase))), cv2.LINE_AA)
+
+            # 2. 24 Radial laser streamers erupting outward in all directions (forward beam perspective)
+            for i in range(24):
+                ang = i * (2 * math.pi / 24) + self.frame_count * 0.05
+                ray_len = max_blast_r * (0.65 + 0.35 * math.sin(self.frame_count * 0.4 + i * 1.3))
+                ex = int(bx + math.cos(ang) * ray_len)
+                ey = int(by + math.sin(ang) * ray_len)
+                cv2.line(overlay, (bx, by), (ex, ey), (255, 230, 60), 3, cv2.LINE_AA)
+                cv2.line(overlay, (bx, by), (ex, ey), (255, 255, 255), 1, cv2.LINE_AA)
+
+            # 3. Electric lightning bolts surging from the core
+            for _ in range(4):
+                ang = random.uniform(0, 2 * math.pi)
+                arc_len = random.uniform(fw * 0.8, fw * 2.2)
+                pts = [(bx, by)]
+                for step in range(1, 5):
+                    frac = step / 4.0
+                    curr_d = arc_len * frac
+                    curr_a = ang + random.uniform(-0.4, 0.4)
+                    pts.append((int(bx + math.cos(curr_a) * curr_d), int(by + math.sin(curr_a) * curr_d)))
+                for k in range(len(pts) - 1):
+                    cv2.line(overlay, pts[k], pts[k + 1], (255, 255, 200), 2, cv2.LINE_AA)
+
+            # 4. Immense central plasma orb at palms (erupting energy source)
+            draw_glow_circle(overlay, (bx, by), max(1, int(fw * 1.6)), (255, 120, 0), -1)   # Deep cyan aura
+            draw_glow_circle(overlay, (bx, by), max(1, int(fw * 1.1)), (255, 230, 60), -1)  # Electric cyan-white
+            draw_glow_circle(overlay, (bx, by), max(1, int(fw * 0.65)), (255, 255, 255), -1) # Blinding white core
+
+            cv2.addWeighted(overlay, 0.80, frame, 0.20, 0, frame)
+            draw_comic_badge(frame, "KAMEHAMEHA BLAST! 🔥", (bx - 140, by - int(fw * 0.95)),
+                             bg_color=(230, 70, 0), text_color=(255, 255, 255), scale=0.95)
+            return
+
+        # Charging State:
+        self.kame_charge = min(1.0, self.kame_charge + dt * 0.40)
+        if self.kame_charge >= 0.98:
+            # Trigger full beam blast!
+            self.kame_blast_timer = 1.6
+            self.kame_blast_origin = (cx, cy)
+            self.screen_flash = 0.85
+            self.kame_charge = 0.0
+
+        pulse = 1.0 + 0.15 * math.sin(self.frame_count * 0.45)
+        r = int(fw * (0.35 + 0.55 * self.kame_charge) * pulse)
 
         overlay = frame.copy()
-        draw_glow_circle(overlay, (cx, cy), r * 1.6, (255, 150, 0), -1)   # Cyan outer aura
-        draw_glow_circle(overlay, (cx, cy), r * 1.1, (255, 240, 80), -1)  # Electric cyan-white
-        draw_glow_circle(overlay, (cx, cy), r * 0.55, (255, 255, 255), -1) # Blinding core
+        draw_glow_circle(overlay, (cx, cy), int(r * 1.7), (255, 140, 0), -1)   # Cyan outer aura
+        draw_glow_circle(overlay, (cx, cy), int(r * 1.15), (255, 240, 80), -1)  # Electric cyan-white
+        draw_glow_circle(overlay, (cx, cy), int(r * 0.60), (255, 255, 255), -1) # Blinding core
 
+        # Inward gathering energy streaks
+        for i in range(6):
+            ang = self.frame_count * 0.1 + i * (2 * math.pi / 6)
+            streak_r = r * 1.4 + (self.frame_count * 5 + i * 15) % int(fw * 0.7)
+            sx = int(cx + math.cos(ang) * streak_r)
+            sy = int(cy + math.sin(ang) * streak_r)
+            cv2.line(overlay, (sx, sy), (cx, cy), (255, 255, 200), 2, cv2.LINE_AA)
+
+        # Lightning bolts
         for _ in range(3):
             angle = random.uniform(0, 2 * math.pi)
             arc_len = random.uniform(r * 0.8, r * 1.5)
@@ -127,17 +325,30 @@ class HandFXRenderer:
                 cv2.line(overlay, pts[i], pts[i + 1], (255, 255, 200), 2, cv2.LINE_AA)
 
         cv2.addWeighted(overlay, 0.70, frame, 0.30, 0, frame)
-        draw_comic_badge(frame, "KAMEHAMEHA!", (cx - 85, cy - r - 25), bg_color=(230, 80, 0), text_color=(255, 255, 255), scale=0.85)
+        pct = int(self.kame_charge * 100)
+        if self.kame_charge < 0.40:
+            badge_text = f"CHARGING... ⚡ ({pct}%)"
+            badge_color = (220, 80, 0)
+        elif self.kame_charge < 0.82:
+            badge_text = f"GATHERING ENERGY! ⚡ ({pct}%)"
+            badge_color = (240, 110, 0)
+        else:
+            badge_text = f"MAXIMUM POWER! 🔥 ({pct}%)"
+            badge_color = (255, 140, 0)
+        draw_comic_badge(frame, badge_text, (cx - 120, cy - r - 25), bg_color=badge_color, text_color=(255, 255, 255), scale=0.82)
 
-    def draw_spirit_bomb(self, frame, h1, h2, face, fw):
+    def draw_spirit_bomb(self, frame, h1, h2, face, fw, dt):
         """Render Dragon Ball Genkidama / Spirit Bomb (🙌) cosmic gathering sphere."""
         H, W = frame.shape[:2]
         cx = int((h1.palm[0] + h2.palm[0]) / 2)
         cy = int(min(h1.palm[1], h2.palm[1]) - fw * 0.75)
         cy = max(cy, int(fw * 0.7))
 
-        pulse = 1.0 + 0.07 * math.sin(self.frame_count * 0.35)
-        R = int(fw * 1.15 * pulse)
+        self.was_hands_high = True
+        self.genki_charge = min(1.0, self.genki_charge + dt * 0.45)
+
+        pulse = 1.0 + 0.08 * math.sin(self.frame_count * 0.35)
+        R = int(fw * (0.8 + 0.6 * self.genki_charge) * pulse)
 
         overlay = frame.copy()
         draw_glow_circle(overlay, (cx, cy), int(R * 1.5), (255, 120, 0), -1)
@@ -172,9 +383,51 @@ class HandFXRenderer:
                 cv2.line(overlay, pts[j], pts[j + 1], (255, 255, 255), 1, cv2.LINE_AA)
 
         cv2.addWeighted(overlay, 0.70, frame, 0.30, 0, frame)
+        pct = int(self.genki_charge * 100)
+        draw_comic_badge(frame, f"GATHERING SPIRIT BOMB... 🌌 ({pct}%)", (cx - 150, cy - int(R * 1.15) - 20),
+                         bg_color=(200, 90, 0), text_color=(255, 255, 255), scale=0.90)
 
-        draw_comic_badge(frame, "GENKIDAMA!", (cx - 75, cy - int(R * 1.15) - 20),
-                         bg_color=(200, 90, 0), text_color=(255, 255, 255), scale=0.95)
+    def draw_spirit_bomb_impact(self, frame, dt):
+        """Render massive cosmic Spirit Bomb crash & shockwave explosion across the screen."""
+        if self.genki_impact_timer <= 0.0:
+            return
+        H, W = frame.shape[:2]
+        self.genki_impact_timer = max(0.0, self.genki_impact_timer - dt)
+        elapsed = 1.8 - self.genki_impact_timer
+        progress = elapsed / 1.8
+
+        cx, cy = W // 2, H // 2
+        max_r = max(W, H) * 0.95
+        cur_r = int(max_r * (progress ** 0.6))
+
+        overlay = frame.copy()
+
+        # Expanding cosmic shockwave rings
+        cv2.circle(overlay, (cx, cy), cur_r, (255, 220, 0), 8, cv2.LINE_AA)
+        cv2.circle(overlay, (cx, cy), max(1, int(cur_r * 0.8)), (255, 255, 200), 4, cv2.LINE_AA)
+        cv2.circle(overlay, (cx, cy), max(1, int(cur_r * 0.5)), (255, 255, 255), 2, cv2.LINE_AA)
+
+        # Starburst particles blasting outward
+        for i in range(24):
+            ang = i * (2 * math.pi / 24)
+            dist_p = cur_r * random.uniform(0.7, 1.1)
+            px = int(cx + math.cos(ang) * dist_p)
+            py = int(cy + math.sin(ang) * dist_p)
+            if 0 <= px < W and 0 <= py < H:
+                cv2.circle(overlay, (px, py), random.randint(2, 5), (255, 255, 255), -1, cv2.LINE_AA)
+
+        alpha = max(0.0, 1.0 - progress)
+        cv2.addWeighted(overlay, 0.75 * alpha, frame, 1.0 - 0.75 * alpha, 0, frame)
+        draw_comic_badge(frame, "SPIRIT BOMB IMPACT! 💥", (cx - 140, H // 2 - 40),
+                         bg_color=(200, 30, 30), text_color=(255, 255, 0), scale=1.0)
+
+    def draw_screen_flash(self, frame, dt):
+        """Render camera flash bloom during massive blast impacts."""
+        if self.screen_flash > 0.01:
+            overlay = frame.copy()
+            overlay[:, :] = (255, 255, 255)
+            cv2.addWeighted(overlay, self.screen_flash, frame, 1.0 - self.screen_flash, 0, frame)
+            self.screen_flash = max(0.0, self.screen_flash - dt * 2.5)
 
     def draw_six_seven(self, frame, h1, h2, fw):
         """Render viral 67 Hand Motion & Hand Sign (see-saw weighing options motion with glowing 6 & 7)."""
@@ -508,65 +761,152 @@ class HandFXRenderer:
 
     def render(self, frame, hands, face):
         """Main rendering entrypoint. Returns name of primary gesture detected, or None."""
-        self.update()
-        fw = face.w if face is not None else 120.0
+        dt = self.update()
+        fw = max(80.0, face.w) if face is not None else 120.0
         H, W = frame.shape[:2]
+        now = time.monotonic()
         primary = None
 
         # Check two-hand gestures first
+        is_two_hand_active = False
         if len(hands) >= 2:
             h1, h2 = hands[0], hands[1]
             hand_dist = float(np.hypot(h1.palm[0] - h2.palm[0], h1.palm[1] - h2.palm[1]))
             face_top = face.nose[1] if face is not None else H * 0.45
 
-            # 1. Spirit Bomb / Genkidama (hands open, raised high up, spread)
-            if h1.open and h2.open and h1.palm[1] < face_top and h2.palm[1] < face_top and hand_dist >= 1.2 * fw:
-                self.draw_spirit_bomb(frame, h1, h2, face, fw)
-                return "spirit_bomb"
+            # 1. Spirit Bomb / Genkidama (hands open, raised high up above face)
+            if h1.open and h2.open and (h1.palm[1] < face_top or h2.palm[1] < face_top) and hand_dist >= 0.8 * fw:
+                self.draw_spirit_bomb(frame, h1, h2, face, fw, dt)
+                primary = "spirit_bomb"
+                is_two_hand_active = True
+                # Suppress Kamehameha completely while gathering Spirit Bomb!
+                self.kame_charge = 0.0
+                self.kame_blast_timer = 0.0
+            elif self.was_hands_high:
+                # Hands dropped! Throw spirit bomb impact down into screen!
+                self.was_hands_high = False
+                if self.genki_charge >= 0.06:
+                    self.genki_impact_timer = 1.8
+                    self.genki_charge = 0.0
+                    self.screen_flash = 0.95
+                    self.kame_charge = 0.0
+                    self.kame_blast_timer = 0.0
 
-            # 2. Kamehameha (hands open, close together in front at similar height)
-            if h1.open and h2.open and hand_dist < 2.0 * fw and abs(h1.palm[1] - h2.palm[1]) < 0.25 * fw:
-                self.draw_kamehameha(frame, h1, h2, fw)
-                return "kamehameha"
+            # 2. Kamehameha (hands open, cupped close together at chest level, NOT raised up)
+            # Never trigger if spirit bomb impact is active or hands are high!
+            if not is_two_hand_active and self.genki_impact_timer <= 0.0 and self.genki_charge <= 0.0:
+                is_kame_pose = (h1.open and h2.open and 
+                                hand_dist < 1.15 * fw and 
+                                h1.palm[1] >= face_top and h2.palm[1] >= face_top and
+                                abs(h1.palm[1] - h2.palm[1]) < 0.25 * fw)
+                if is_kame_pose or (self.kame_blast_timer > 0.0):
+                    self.draw_kamehameha(frame, h1, h2, fw, dt)
+                    primary = "kamehameha"
+                    is_two_hand_active = True
+                else:
+                    self.kame_charge = max(0.0, self.kame_charge - dt * 0.75)
+            else:
+                self.kame_charge = 0.0
 
             # 3. 67 Hand Motion / Sign (Seesaw weighing options motion OR 6 🤙 + 7 👉)
-            is_67_sign = (getattr(h1, "is_six", False) and (getattr(h2, "is_gun", False) or getattr(h2, "is_pointing", False))) or \
-                         (getattr(h2, "is_six", False) and (getattr(h1, "is_gun", False) or getattr(h1, "is_pointing", False)))
-            is_67_seesaw = (h1.open and h2.open and (h1.palm[1] >= face_top or h2.palm[1] >= face_top) and
-                            abs(h1.palm[1] - h2.palm[1]) > 0.20 * fw and hand_dist < 4.5 * fw)
+            if not is_two_hand_active:
+                is_67_sign = (getattr(h1, "is_six", False) and (getattr(h2, "is_gun", False) or getattr(h2, "is_pointing", False))) or \
+                             (getattr(h2, "is_six", False) and (getattr(h1, "is_gun", False) or getattr(h1, "is_pointing", False)))
+                is_67_seesaw = (h1.open and h2.open and (h1.palm[1] >= face_top or h2.palm[1] >= face_top) and
+                                abs(h1.palm[1] - h2.palm[1]) > 0.20 * fw and hand_dist < 4.5 * fw)
 
-            if is_67_sign or is_67_seesaw:
-                self.draw_six_seven(frame, h1, h2, fw)
-                return "six_seven"
+                if is_67_sign or is_67_seesaw:
+                    self.draw_six_seven(frame, h1, h2, fw)
+                    primary = "six_seven"
+                    is_two_hand_active = True
+        else:
+            if self.was_hands_high:
+                self.was_hands_high = False
+                if self.genki_charge >= 0.06:
+                    self.genki_impact_timer = 1.8
+                    self.genki_charge = 0.0
+                    self.screen_flash = 0.95
+                    self.kame_charge = 0.0
+                    self.kame_blast_timer = 0.0
 
-        # Check individual hand gestures
-        for h in hands:
-            if getattr(h, "is_peace", False):
-                self.draw_peace_sparkles(frame, h, fw)
-                primary = primary or "peace"
-            elif getattr(h, "is_spiderman", False):
-                self.draw_spiderman(frame, h, fw)
-                primary = "spiderman"
-            elif getattr(h, "is_gun", False):
-                self.draw_finger_gun(frame, h, fw)
-                primary = primary or "finger_gun"
-            elif getattr(h, "is_rock_on", False):
-                self.draw_rock_on_fire(frame, h, fw)
-                primary = primary or "rock_on"
-            elif getattr(h, "is_pointing", False):
-                self.draw_doctor_strange(frame, h, fw)
-                primary = primary or "doctor_strange"
-            elif getattr(h, "is_six", False):
-                self.draw_shaka_six(frame, h, fw)
-                primary = primary or "shaka_six"
-            elif getattr(h, "is_thumbs_up", False):
-                self.draw_thumbs_up(frame, h, fw)
-                primary = primary or "thumbs_up"
-            elif getattr(h, "is_fist", False):
-                self.draw_wolverine_claws(frame, h, fw)
-                primary = primary or "wolverine"
-            elif getattr(h, "is_repulsor", False):
-                self.draw_repulsor(frame, h, fw)
-                primary = primary or "repulsor"
+        # Check individual hand gestures if two-hand action is not dominant
+        if not is_two_hand_active:
+            # Check if any hand is in a fist or curled pose to prime the web shooter
+            for h in hands:
+                if getattr(h, "is_fist", False) or (not h.open and not getattr(h, "is_spiderman", False) and not getattr(h, "is_peace", False)):
+                    self.spider_primed = True
+                    self.last_fist_time = now
+
+            for idx, h in enumerate(hands):
+                if getattr(h, "is_peace", False):
+                    self.draw_peace_sparkles(frame, h, fw)
+                    primary = primary or "peace"
+                elif getattr(h, "is_spiderman", False):
+                    # Trigger web projectile into screen only if primed from fist & cooldown passed
+                    can_fire = (self.spider_primed or (now - self.last_fist_time < 1.2)) and (now - self.last_web_shot_time > 1.0)
+                    if can_fire:
+                        self.spider_primed = False
+                        self.last_fist_time = 0.0
+                        self.last_web_shot_time = now
+
+                        # Direction of hand aim (vector from wrist toward horns/fingers tip)
+                        aim_tip = (h.index + h.pinky) / 2.0
+                        hand_dir = aim_tip - h.wrist
+                        d_len = float(np.hypot(hand_dir[0], hand_dir[1]))
+                        if d_len > 12.0:
+                            ux, uy = hand_dir[0] / d_len, hand_dir[1] / d_len
+                        else:
+                            ux, uy = 0.0, -1.0
+
+                        # Project forward from wrist along aim direction
+                        proj_dist = max(fw * 1.6, 200.0)
+                        target_x = h.wrist[0] + ux * proj_dist + random.randint(-15, 15)
+                        target_y = h.wrist[1] + uy * proj_dist + random.randint(-15, 15)
+                        splat_x = int(np.clip(target_x, 60, W - 60))
+                        splat_y = int(np.clip(target_y, 60, H - 60))
+
+                        # Compact, realistic web splat radius (so it doesn't blot out entire webcam)
+                        web_radius = int(np.clip(fw * 0.65, 75, 120))
+                        self.web_splats.append(WebSplat(splat_x, splat_y, max_radius=web_radius, spawn_time=now))
+                        if len(self.web_splats) > 2:
+                            self.web_splats.pop(0)
+
+                    self.draw_spiderman(frame, h, fw)
+                    primary = "spiderman"
+                elif getattr(h, "is_gun", False):
+                    self.draw_finger_gun(frame, h, fw)
+                    primary = primary or "finger_gun"
+                elif getattr(h, "is_rock_on", False):
+                    self.draw_rock_on_fire(frame, h, fw)
+                    primary = primary or "rock_on"
+                elif getattr(h, "is_pointing", False):
+                    self.draw_doctor_strange(frame, h, fw)
+                    primary = primary or "doctor_strange"
+                elif getattr(h, "is_six", False):
+                    self.draw_shaka_six(frame, h, fw)
+                    primary = primary or "shaka_six"
+                elif getattr(h, "is_thumbs_up", False):
+                    self.draw_thumbs_up(frame, h, fw)
+                    primary = primary or "thumbs_up"
+                elif getattr(h, "is_fist", False):
+                    self.draw_wolverine_claws(frame, h, fw)
+                    primary = primary or "wolverine"
+                elif getattr(h, "is_repulsor", False):
+                    self.draw_repulsor(frame, h, fw)
+                    primary = primary or "repulsor"
+
+        # --- Render Persistent Screen Overlays (Web Splats, Spirit Bomb Impact, Screen Flash) ---
+        # 1. Active Web Splats stuck to webcam lens
+        alive_splats = []
+        for splat in self.web_splats:
+            if splat.draw(frame, now):
+                alive_splats.append(splat)
+        self.web_splats = alive_splats
+
+        # 2. Spirit Bomb Screen Crash Impact
+        self.draw_spirit_bomb_impact(frame, dt)
+
+        # 3. Screen Flash Bloom
+        self.draw_screen_flash(frame, dt)
 
         return primary
